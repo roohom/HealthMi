@@ -30,6 +30,9 @@ struct MiDailyActivity: Sendable, Identifiable, Hashable {
     let distanceM: Double
     let activeKcal: Double
     let timezone: String
+    var hasSteps = true
+    var hasDistance = true
+    var hasActiveCalories = true
     var id: String { "mi_fitness_activity_\(date)" }
 }
 
@@ -55,6 +58,8 @@ struct MiSleepSession: Sendable, Identifiable, Hashable {
     let isNap: Bool
     /// 原始分期段（带精确起止时间），供 HealthKit 精细写入。
     let segments: [MiSleepSegment]
+    var sourceID: String? = nil
+    var legacySleepIDs: [String] = []
     var id: String { "mi_fitness_sleep_\(sleepId)" }
 
     /// 各分期累计分钟数（与 Python `stages` 聚合一致）。
@@ -93,6 +98,8 @@ struct MiRespiratoryRateSample: Sendable, Identifiable, Hashable {
     let startAt: Date
     let endAt: Date
     let breathsPerMinute: Int
+    var sourceID: String? = nil
+    var legacySleepIDs: [String] = []
     var id: String { "mi_fitness_respiratory_\(sleepId)" }
 }
 
@@ -102,6 +109,8 @@ struct MiHRVSample: Sendable, Identifiable, Hashable {
     let startAt: Date
     let endAt: Date
     let sdnnMs: Int
+    var sourceID: String? = nil
+    var legacySleepIDs: [String] = []
     var id: String { "mi_fitness_hrv_\(sleepId)" }
 }
 
@@ -130,6 +139,8 @@ struct MiWorkout: Sendable, Identifiable, Hashable {
     let avgHeartRateBpm: Int?
     let maxHeartRateBpm: Int?
     let totalSteps: Int?
+    var legacyWorkoutIDs: [String] = []
+    var legacyPrefix: String? = nil
     var id: String { "mi_fitness_workout_\(workoutId)" }
 }
 

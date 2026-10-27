@@ -61,8 +61,17 @@ enum SyncStateStore {
         return (try? context.fetch(descriptor))?.first
     }
 
-    static func ensureState(for type: SyncDataType, in context: ModelContext) -> SyncState {
-        if let existing = state(for: type, in: context) { return existing }
+    static func lastSyncedEnd(for type: SyncDataType, container: ModelContainer) throws -> Date? {
+        let context = ModelContext(container)
+        let raw = type.rawValue
+        let descriptor = FetchDescriptor<SyncState>(predicate: #Predicate { $0.typeRawValue == raw })
+        return try context.fetch(descriptor).first?.lastSyncedEnd
+    }
+
+    static func ensureState(for type: SyncDataType, in context: ModelContext) throws -> SyncState {
+        let raw = type.rawValue
+        let descriptor = FetchDescriptor<SyncState>(predicate: #Predicate { $0.typeRawValue == raw })
+        if let existing = try context.fetch(descriptor).first { return existing }
         let created = SyncState(typeRawValue: type.rawValue)
         context.insert(created)
         return created
@@ -70,15 +79,18 @@ enum SyncStateStore {
 
     static func record(
         type: SyncDataType, highWater: Date?, added: Int, in context: ModelContext
-    ) {
-        let state = ensureState(for: type, in: context)
-        state.lastSyncedEnd = highWater
-        state.lastSyncAt = Date()
-        state.lastAddedCount = added
+    ) throws {
+        let writeContext = ModelContext(context.container)
+        writeContext.autosaveEnabled = false
         do {
-            try context.save()
+            let state = try ensureState(for: type, in: writeContext)
+            state.lastSyncedEnd = highWater
+            state.lastSyncAt = Date()
+            state.lastAddedCount = added
+            try writeContext.save()
         } catch {
-            AppLog.syncStateStore.error("保存同步游标失败 (\(type.rawValue))：\(error.localizedDescription)")
+            writeContext.rollback()
+            throw error
         }
     }
 

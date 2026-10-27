@@ -17,21 +17,21 @@ enum TypeMapper {
         else { return [] }
 
         var samples: [HKQuantitySample] = []
-        if activity.steps > 0 {
+        if activity.hasSteps && activity.steps >= 0 {
             samples.append(quantity(
                 .stepCount, unit: .count(), value: Double(activity.steps),
                 start: start, end: end,
                 uuid: "mi_fitness_steps_\(activity.date)"
             ))
         }
-        if activity.distanceM > 0 {
+        if activity.hasDistance && activity.distanceM >= 0 {
             samples.append(quantity(
                 .distanceWalkingRunning, unit: .meter(), value: activity.distanceM,
                 start: start, end: end,
                 uuid: "mi_fitness_distance_\(activity.date)"
             ))
         }
-        if activity.activeKcal > 0 {
+        if activity.hasActiveCalories && activity.activeKcal >= 0 {
             samples.append(quantity(
                 .activeEnergyBurned, unit: .kilocalorie(), value: activity.activeKcal,
                 start: start, end: end,
@@ -76,7 +76,10 @@ enum TypeMapper {
             .respiratoryRate, unit: .count().unitDivided(by: .minute()),
             value: Double(sample.breathsPerMinute),
             start: sample.startAt, end: sample.endAt,
-            uuid: sample.id
+            uuid: sample.id,
+            scope: "sleep:\(sample.sleepId)",
+            aliases: sample.legacySleepIDs.map { "mi_fitness_respiratory_\($0)" },
+            legacyPrefix: "mi_fitness_respiratory_\(sample.sourceID ?? "unknown")_"
         )
     }
 
@@ -87,7 +90,10 @@ enum TypeMapper {
             .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli),
             value: Double(sample.sdnnMs),
             start: sample.startAt, end: sample.endAt,
-            uuid: sample.id
+            uuid: sample.id,
+            scope: "sleep:\(sample.sleepId)",
+            aliases: sample.legacySleepIDs.map { "mi_fitness_hrv_\($0)" },
+            legacyPrefix: "mi_fitness_hrv_\(sample.sourceID ?? "unknown")_"
         )
     }
 
@@ -148,12 +154,20 @@ enum TypeMapper {
         var samples: [HKCategorySample] = []
         samples.append(category(
             .inBed, start: base, end: end,
-            uuid: "mi_fitness_sleep_\(session.sleepId)_inBed"
+            uuid: "mi_fitness_sleep_\(session.sleepId)_inBed",
+            scope: "sleep:\(session.sleepId)",
+            aliases: session.legacySleepIDs.map { "mi_fitness_sleep_\($0)_inBed" },
+            legacyPrefix: "mi_fitness_sleep_\(session.sourceID ?? "unknown")_",
+            completeScope: true
         ))
         for segment in session.segments where segment.minutes > 0 {
             samples.append(category(
                 stageValue(segment.stage), start: segment.startAt, end: segment.endAt,
-                uuid: "mi_fitness_sleep_\(session.sleepId)_\(segment.stage.rawValue)_\(Int(segment.startAt.timeIntervalSince1970))"
+                uuid: "mi_fitness_sleep_\(session.sleepId)_segment_\(Int(segment.startAt.timeIntervalSince1970))",
+                scope: "sleep:\(session.sleepId)",
+                aliases: session.legacySleepIDs.map {
+                    "mi_fitness_sleep_\($0)_\(segment.stage.rawValue)_\(Int(segment.startAt.timeIntervalSince1970))"
+                }
             ))
         }
         return samples
@@ -182,6 +196,8 @@ enum TypeMapper {
         let end: Date
         let avgHeartRateBpm: Int?
         let maxHeartRateBpm: Int?
+        var legacyUUIDs: [String] = []
+        var legacyPrefix: String? = nil
     }
 
     static func workoutDraft(_ workout: MiWorkout) -> WorkoutDraft? {
@@ -192,8 +208,31 @@ enum TypeMapper {
             start: workout.startAt,
             end: workout.endAt,
             avgHeartRateBpm: workout.avgHeartRateBpm,
-            maxHeartRateBpm: workout.maxHeartRateBpm
+            maxHeartRateBpm: workout.maxHeartRateBpm,
+            legacyUUIDs: workout.legacyWorkoutIDs.map { "mi_fitness_workout_\($0)" },
+            legacyPrefix: workout.legacyPrefix
         )
+    }
+
+    static func workoutSyncSamples(_ draft: WorkoutDraft) -> [HealthSyncSample] {
+        var samples = [HealthSyncSample(
+            key: draft.externalUUID, type: HKObjectType.workoutType().identifier, kind: .workout,
+            start: draft.start, end: draft.end, value: Double(draft.activityType.rawValue),
+            scope: draft.externalUUID, legacyKeys: draft.legacyUUIDs,
+            legacyScopePrefix: draft.legacyPrefix
+        )]
+        for (suffix, bpm) in [("avg_hr", draft.avgHeartRateBpm), ("max_hr", draft.maxHeartRateBpm)] {
+            guard let bpm, bpm > 0 else { continue }
+            samples[0].workoutHeartRates[suffix] = Double(bpm)
+            samples.append(HealthSyncSample(
+                key: "\(draft.externalUUID)_\(suffix)", type: HKQuantityType(.heartRate).identifier,
+                kind: .quantity, start: draft.start, end: draft.end, value: Double(bpm),
+                unit: HKUnit.count().unitDivided(by: .minute()).unitString,
+                scope: draft.externalUUID, parentKey: draft.externalUUID,
+                legacyKeys: draft.legacyUUIDs.map { "\($0)_\(suffix)" }
+            ))
+        }
+        return samples
     }
 
     /// 小米运动类型关键词 → `HKWorkoutActivityType`（中文/英文关键词，默认 .other）。
@@ -222,25 +261,41 @@ enum TypeMapper {
 
     private static func quantity(
         _ identifier: HKQuantityTypeIdentifier, unit: HKUnit, value: Double,
-        start: Date, end: Date, uuid: String
+        start: Date, end: Date, uuid: String, scope: String? = nil,
+        aliases: [String] = [], legacyPrefix: String? = nil
     ) -> HKQuantitySample {
         HKQuantitySample(
             type: HKQuantityType(identifier),
             quantity: HKQuantity(unit: unit, doubleValue: value),
             start: start, end: end,
-            metadata: [HKMetadataKeyExternalUUID: uuid]
+            metadata: metadata(uuid: uuid, scope: scope, aliases: aliases, legacyPrefix: legacyPrefix)
         )
     }
 
     private static func category(
-        _ value: HKCategoryValueSleepAnalysis, start: Date, end: Date, uuid: String
+        _ value: HKCategoryValueSleepAnalysis, start: Date, end: Date, uuid: String,
+        scope: String? = nil, aliases: [String] = [], legacyPrefix: String? = nil,
+        completeScope: Bool = false
     ) -> HKCategorySample {
         HKCategorySample(
             type: HKCategoryType(.sleepAnalysis),
             value: value.rawValue,
             start: start, end: end,
-            metadata: [HKMetadataKeyExternalUUID: uuid]
+            metadata: metadata(uuid: uuid, scope: scope, aliases: aliases, legacyPrefix: legacyPrefix,
+                               completeScope: completeScope)
         )
+    }
+
+    private static func metadata(uuid: String, scope: String?, aliases: [String],
+                                 legacyPrefix: String?, completeScope: Bool = false) -> [String: Any] {
+        var result: [String: Any] = [HKMetadataKeyExternalUUID: uuid]
+        if let scope { result[HealthSyncMetadata.scope] = scope }
+        if let legacyPrefix { result[HealthSyncMetadata.legacyPrefix] = legacyPrefix }
+        if completeScope { result[HealthSyncMetadata.completeScope] = true }
+        if !aliases.isEmpty, let data = try? JSONEncoder().encode(aliases) {
+            result[HealthSyncMetadata.aliases] = String(data: data, encoding: .utf8)
+        }
+        return result
     }
 
     private static let calendar: Calendar = {

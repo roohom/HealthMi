@@ -1,0 +1,5 @@
+HEALTHMI_BUNDLE_IDENTIFIER = com.healthmi.HealthMi
+HEALTHMI_DEVELOPMENT_TEAM =
+
+// Optional machine-local signing; no account identifiers need to be committed.
+#include? "Signing.local.xcconfig"

@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(HealthMiCore)
+@testable import HealthMiCore
+#else
 @testable import HealthMi
+#endif
 
 /// 校验从 Python `iter_*` 移植的解析逻辑。
 final class MiParserTests: XCTestCase {
@@ -35,7 +39,7 @@ final class MiParserTests: XCTestCase {
         XCTAssertEqual(day.activeKcal, 210)
     }
 
-    func testSleepStagesParsing() {
+    func testSleepStagesParsing() throws {
         let start = 1_782_000_000
         let value: [String: Any] = [
             "bedtime": start,
@@ -49,7 +53,7 @@ final class MiParserTests: XCTestCase {
                 ["start_time": start + 5400, "end_time": start + 7200, "state": 4], // rem
             ],
         ]
-        let sessions = MiParser.sleepSessions([item(time: start, value: value, sid: "user1")])
+        let sessions = try MiParser.sleepSessions([item(time: start, value: value, sid: "user1")])
         XCTAssertEqual(sessions.count, 1)
         let session = sessions[0]
         XCTAssertEqual(session.durationMinutes, 360)
@@ -77,27 +81,27 @@ final class MiParserTests: XCTestCase {
         XCTAssertEqual(workout.maxHeartRateBpm, 175)
     }
 
-    func testHRVParsing() {
+    func testHRVParsing() throws {
         let start = 1_782_000_000
         let value: [String: Any] = [
             "avg_hrv": 37,
             "bedtime": start,
             "wake_up_time": start + 6 * 3600,
         ]
-        let samples = MiParser.hrvSamples([item(time: start, value: value, sid: "user1")])
+        let samples = try MiParser.hrvSamples([item(time: start, value: value, sid: "user1")])
         XCTAssertEqual(samples.count, 1)
         XCTAssertEqual(samples[0].sdnnMs, 37)
         XCTAssertEqual(samples[0].id, "mi_fitness_hrv_user1_\(start)")
     }
 
-    func testRespiratoryRateParsing() {
+    func testRespiratoryRateParsing() throws {
         let start = 1_782_000_000
         let value: [String: Any] = [
             "avg_breath": 16,
             "bedtime": start,
             "wake_up_time": start + 6 * 3600,
         ]
-        let samples = MiParser.respiratoryRateSamples([item(time: start, value: value, sid: "user1")])
+        let samples = try MiParser.respiratoryRateSamples([item(time: start, value: value, sid: "user1")])
         XCTAssertEqual(samples.count, 1)
         XCTAssertEqual(samples[0].breathsPerMinute, 16)
         XCTAssertEqual(samples[0].id, "mi_fitness_respiratory_user1_\(start)")

@@ -3,6 +3,68 @@ import Foundation
 /// 把云端原始条目（`[MiItem]`）解析为业务模型。
 /// Swift 移植自 `mi_fitness_cloud.py` 的各 `iter_*` 方法，字段与解析规则保持一致。
 enum MiParser {
+    enum SleepError: LocalizedError {
+        case invalidRecord, conflictingVersions, unknownStage, incompleteStages
+        var errorDescription: String? {
+            switch self {
+            case .invalidRecord: return "睡眠记录格式或分段时间无效，已停止本类同步。"
+            case .conflictingVersions:
+                return "同次睡眠存在不同内容，但云端未提供可确认的修订顺序；已保留现有健康数据。"
+            case .unknownStage: return "发现未知睡眠阶段，已停止写入，避免误记成浅睡。"
+            case .incompleteStages: return "云端睡眠缺少完整分期，已保留现有睡眠数据，请稍后重试。"
+            }
+        }
+    }
+
+    private struct SleepRecord {
+        var item: MiItem
+        var aliases: [String]
+        let content: Data
+    }
+
+    /// `time` is a source timestamp, not a documented revision number. Never use it to
+    /// guess which conflicting snapshot wins, nor assume that longer sleep is newer.
+    private static func canonicalSleepRecords(_ items: [MiItem]) throws -> [SleepRecord] {
+        var records: [String: SleepRecord] = [:]
+        for item in items {
+            let payload = valueObject(item)
+            guard let start = firstInt(payload, "bedtime", "device_bedtime", "bed_timestamp"),
+                  let end = firstInt(payload, "wake_up_time", "device_wake_up_time", "out_bed_timestamp") ?? item.time,
+                  start > 0, end > start else { throw SleepError.invalidRecord }
+            let sid = item.sid ?? "unknown"
+            let key = "\(sid)_\(start)"
+            let alias = "\(sid)_\(item.time ?? end)"
+            var segments: [[String: Int]] = []
+            if payload["items"] != nil, !(payload["items"] is [[String: Any]]) { throw SleepError.invalidRecord }
+            for segment in (payload["items"] as? [[String: Any]]) ?? [] {
+                guard let a = MiJSON.int(segment["start_time"]), let b = MiJSON.int(segment["end_time"]),
+                      let stage = MiJSON.int(segment["state"]), b > a, a >= start, b <= end else {
+                    throw SleepError.invalidRecord
+                }
+                guard (2...5).contains(stage) else { throw SleepError.unknownStage }
+                segments.append(["start_time": a, "end_time": b, "state": stage])
+            }
+            segments.sort { $0["start_time"]! < $1["start_time"]! }
+            var previousEnd = start
+            for segment in segments {
+                guard segment["start_time"]! >= previousEnd else { throw SleepError.invalidRecord }
+                previousEnd = segment["end_time"]!
+            }
+            var semantic: [String: Any] = ["start": start, "end": end, "items": segments]
+            for field in ["avg_breath", "avg_hrv", "hrv_median"] {
+                if let value = MiJSON.int(payload[field]) { semantic[field] = value }
+            }
+            let content = try JSONSerialization.data(withJSONObject: semantic, options: .sortedKeys)
+            if var existing = records[key] {
+                guard existing.content == content else { throw SleepError.conflictingVersions }
+                existing.aliases = Array(Set(existing.aliases + [alias])).sorted()
+                records[key] = existing
+            } else {
+                records[key] = SleepRecord(item: item, aliases: [alias], content: content)
+            }
+        }
+        return records.sorted { $0.key < $1.key }.map(\.value)
+    }
     // MARK: - 日常活动（steps + calories 两个 key）
 
     /// 对应 `iter_daily_activity`：步数/距离来自 steps，活动卡路里以 calories 总量为准。
@@ -15,26 +77,32 @@ enum MiParser {
             var distance = 0.0
             var kcalFromSteps = 0.0
             var timezone = "UTC"
+            var hasSteps = false
+            var hasDistance = false
+            var hasCalories = false
         }
         var byDate: [String: Acc] = [:]
-        for item in stepsItems {
+        var seenSteps = Set<MiItem>()
+        for item in stepsItems where seenSteps.insert(item).inserted {
             let date = calendarDay(of: item)
             let payload = valueObject(item)
             var acc = byDate[date] ?? Acc()
-            acc.steps += MiJSON.int(payload["steps"]) ?? 0
-            acc.distance += MiJSON.double(payload["distance"]) ?? 0
-            acc.kcalFromSteps += MiJSON.double(payload["calories"]) ?? 0
+            if let steps = MiJSON.int(payload["steps"]) { acc.steps += steps; acc.hasSteps = true }
+            if let distance = MiJSON.double(payload["distance"]) { acc.distance += distance; acc.hasDistance = true }
+            if let calories = MiJSON.double(payload["calories"]) { acc.kcalFromSteps += calories; acc.hasCalories = true }
             if let zone = item.zoneName { acc.timezone = zone }
             byDate[date] = acc
         }
         var calorieTotals: [String: Double] = [:]
-        for item in calorieItems {
+        var seenCalories = Set<MiItem>()
+        for item in calorieItems where seenCalories.insert(item).inserted {
             let date = calendarDay(of: item)
             let payload = valueObject(item)
-            calorieTotals[date, default: 0] += MiJSON.double(payload["calories"]) ?? 0
+            if let calories = MiJSON.double(payload["calories"]) { calorieTotals[date, default: 0] += calories }
         }
         for (date, total) in calorieTotals {
             byDate[date, default: Acc()].kcalFromSteps = total
+            byDate[date, default: Acc()].hasCalories = true
         }
         return byDate.sorted { $0.key < $1.key }.map { date, acc in
             MiDailyActivity(
@@ -42,7 +110,10 @@ enum MiParser {
                 steps: acc.steps,
                 distanceM: acc.distance,
                 activeKcal: acc.kcalFromSteps,
-                timezone: acc.timezone
+                timezone: acc.timezone,
+                hasSteps: acc.hasSteps,
+                hasDistance: acc.hasDistance,
+                hasActiveCalories: acc.hasCalories
             )
         }
     }
@@ -50,10 +121,14 @@ enum MiParser {
     // MARK: - 睡眠
 
     /// 对应 `iter_sleep_sessions`。分段（stages）保留精确起止时间，供 HealthKit 精细写入。
-    static func sleepSessions(_ items: [MiItem]) -> [MiSleepSession] {
+    static func sleepSessions(_ items: [MiItem]) throws -> [MiSleepSession] {
         var sessions: [MiSleepSession] = []
-        for item in items {
+        for record in try canonicalSleepRecords(items) {
+            let item = record.item
             let payload = valueObject(item)
+            guard let stages = payload["items"] as? [[String: Any]], !stages.isEmpty else {
+                throw SleepError.incompleteStages
+            }
             let sleepStart = firstInt(payload, "bedtime", "device_bedtime", "bed_timestamp")
             let sleepEnd = firstInt(payload, "wake_up_time", "device_wake_up_time", "out_bed_timestamp")
                 ?? item.time
@@ -84,7 +159,7 @@ enum MiParser {
             }
 
             let sid = item.sid ?? "unknown"
-            let sleepId = "\(sid)_\(item.time ?? end)"
+            let sleepId = "\(sid)_\(start)"
             sessions.append(MiSleepSession(
                 sleepId: sleepId,
                 startAt: startAt,
@@ -94,7 +169,9 @@ enum MiParser {
                 timeAwakeMinutes: awake,
                 sleepScore: MiJSON.int(payload["score"]) ?? MiJSON.int(payload["sleep_score"]),
                 isNap: MiJSON.bool(payload["is_nap"]) ?? false,
-                segments: segments
+                segments: segments.sorted { $0.startAt < $1.startAt },
+                sourceID: item.sid,
+                legacySleepIDs: record.aliases
             ))
         }
         return sessions
@@ -179,20 +256,23 @@ enum MiParser {
     // MARK: - 心率变异性（睡眠 HRV）
 
     /// 从睡眠记录提取 HRV（优先 `avg_hrv`，回退 `hrv_median`），单位毫秒。
-    static func hrvSamples(_ items: [MiItem]) -> [MiHRVSample] {
-        items.compactMap { item in
+    static func hrvSamples(_ items: [MiItem]) throws -> [MiHRVSample] {
+        try canonicalSleepRecords(items).compactMap { record in
+            let item = record.item
             let payload = valueObject(item)
             let sdnn = MiJSON.int(payload["avg_hrv"]) ?? MiJSON.int(payload["hrv_median"])
             guard let sdnn, sdnn > 0 else { return nil }
             let start = firstInt(payload, "bedtime", "device_bedtime", "bed_timestamp") ?? item.time
             let end = firstInt(payload, "wake_up_time", "device_wake_up_time", "out_bed_timestamp") ?? item.time
             guard let start, let end, end > start else { return nil }
-            let sleepId = "\(item.sid ?? "unknown")_\(item.time ?? end)"
+            let sleepId = "\(item.sid ?? "unknown")_\(start)"
             return MiHRVSample(
                 sleepId: sleepId,
                 startAt: Date(timeIntervalSince1970: Double(start)),
                 endAt: Date(timeIntervalSince1970: Double(end)),
-                sdnnMs: sdnn
+                sdnnMs: sdnn,
+                sourceID: item.sid,
+                legacySleepIDs: record.aliases
             )
         }
     }
@@ -200,19 +280,22 @@ enum MiParser {
     // MARK: - 呼吸频率（睡眠平均）
 
     /// 从睡眠记录提取 `avg_breath`（每次睡眠的平均呼吸频率）。
-    static func respiratoryRateSamples(_ items: [MiItem]) -> [MiRespiratoryRateSample] {
-        items.compactMap { item in
+    static func respiratoryRateSamples(_ items: [MiItem]) throws -> [MiRespiratoryRateSample] {
+        try canonicalSleepRecords(items).compactMap { record in
+            let item = record.item
             let payload = valueObject(item)
             guard let breaths = MiJSON.int(payload["avg_breath"]), breaths > 0 else { return nil }
             let start = firstInt(payload, "bedtime", "device_bedtime", "bed_timestamp") ?? item.time
             let end = firstInt(payload, "wake_up_time", "device_wake_up_time", "out_bed_timestamp") ?? item.time
             guard let start, let end, end > start else { return nil }
-            let sleepId = "\(item.sid ?? "unknown")_\(item.time ?? end)"
+            let sleepId = "\(item.sid ?? "unknown")_\(start)"
             return MiRespiratoryRateSample(
                 sleepId: sleepId,
                 startAt: Date(timeIntervalSince1970: Double(start)),
                 endAt: Date(timeIntervalSince1970: Double(end)),
-                breathsPerMinute: breaths
+                breathsPerMinute: breaths,
+                sourceID: item.sid,
+                legacySleepIDs: record.aliases
             )
         }
     }
@@ -256,7 +339,8 @@ enum MiParser {
             if durationMinutes == 0 { durationMinutes = max(0, (endTs - startTs) / 60) }
 
             let key = item.key ?? "workout"
-            let workoutId = "\(item.sid ?? "unknown")_\(key)_\(item.time ?? startTs)"
+            let workoutId = "\(item.sid ?? "unknown")_\(key)_\(startTs)"
+            let legacyID = "\(item.sid ?? "unknown")_\(key)_\(item.time ?? startTs)"
             out.append(MiWorkout(
                 workoutId: workoutId,
                 activityType: item.category ?? item.key ?? MiJSON.string(payload["sport_type"]) ?? "workout",
@@ -267,7 +351,9 @@ enum MiParser {
                 caloriesKcal: optionalDouble(payload["calories"]) ?? optionalDouble(payload["total_cal"]),
                 avgHeartRateBpm: optionalInt(payload["avg_hrm"]),
                 maxHeartRateBpm: optionalInt(payload["max_hrm"]),
-                totalSteps: optionalInt(payload["steps"]) ?? optionalInt(payload["total_steps"])
+                totalSteps: optionalInt(payload["steps"]) ?? optionalInt(payload["total_steps"]),
+                legacyWorkoutIDs: [legacyID],
+                legacyPrefix: "mi_fitness_workout_\(item.sid ?? "unknown")_\(key)_"
             ))
         }
         return out

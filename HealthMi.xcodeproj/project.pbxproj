@@ -9,10 +9,13 @@
 /* Begin PBXBuildFile section */
 		00B6417CEF09B90A63A9E08C /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE42963B0DA22F1D3A79BD4 /* SyncEngine.swift */; };
 		0A354162109CDE65AA26CC7C /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84D3AB8A04983B253EB8C2D /* SyncEngineTests.swift */; };
+		0CB996F4D914927353FCC7AD /* HealthKitSyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB39744033DFBF9C7D5579B /* HealthKitSyncStore.swift */; };
 		1E1BBEC48FFED51E03E7AC6B /* MiParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03EB6FDE05824AFA45771995 /* MiParserTests.swift */; };
+		1E1E5E15FA5203957AC942D5 /* SyncWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB45C11B7CB32265D7F8DD51 /* SyncWindow.swift */; };
 		275026CA85AC231464B4C0A7 /* StressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E5A617ADC0F1D321F07B42 /* StressStore.swift */; };
 		30E3C6360E48DE069365E232 /* BackgroundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958D958B50ADE261F3509087 /* BackgroundSync.swift */; };
 		39392FE6F057C695C299F592 /* SyncHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319B7AE4B010DE68B4A9B4E8 /* SyncHistoryView.swift */; };
+		3A81E0CB347E67854048226A /* CloudContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0927148C8AAC8934B54AAD00 /* CloudContractTests.swift */; };
 		3B5C38396C47D2B794AB7ECD /* DataExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BD4E363B360409586F110F /* DataExporter.swift */; };
 		429AC37EF4C3D2AEBDADB563 /* TrendChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351CE95207B3A629BAFEAB8B /* TrendChartView.swift */; };
 		469496648125A41CF5F603C7 /* MiAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC94990A6984263D47FA0FD8 /* MiAPIClient.swift */; };
@@ -22,12 +25,14 @@
 		55B73A839E41DE6C16DFAA35 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C0AAB8A8E69A2D9066312A /* AppLog.swift */; };
 		73C9763657E92E9ED4E417A7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028389EDD4D2D68BA73947B0 /* RootView.swift */; };
 		75A51F22447D3E7A04D76324 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8507D81902145FAE6F078136 /* DashboardView.swift */; };
+		89D5BFE664910E037B1AA5D2 /* HealthSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0559247084DE6DDBDBC9DE9 /* HealthSync.swift */; };
 		8CA8D47BDDF2A41DF6A631BC /* TypeMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E40673AC22486334376C0C /* TypeMapperTests.swift */; };
 		8FEE0DFD3AA172522DCC4CBE /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87623416CD8EFC1BDBD2DF0F /* HealthKitManager.swift */; };
 		961972462B2822830BF4E174 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600AB680690567A717BABBAD /* NotificationManager.swift */; };
 		9EB94346E8064DEB591BC8A9 /* MiWebLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7904AA83ABA2A588A43824 /* MiWebLogin.swift */; };
 		A088A41ECFD8BFEE523CF0C6 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C5284FE104D38400CDEF2F /* OnboardingView.swift */; };
 		A47F941A95E58E7D1C0E64A2 /* MiWebLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B2D77AD6CC548500DB6E71 /* MiWebLoginTests.swift */; };
+		A689716E6F68BA7754E71B68 /* SyncReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C072B77F1762B2CA8F106DA /* SyncReliabilityTests.swift */; };
 		A74666C4D9A13A9DDB903F29 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF488E7F903066AD79D78D8 /* AppModel.swift */; };
 		A938F88BF26BF29DFEBC688E /* SyncStateStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3621E0CB2D9DCF7D415B0A89 /* SyncStateStoreTests.swift */; };
 		AE9B8F3C1046BEF1A1E73170 /* MiCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47011AAE9C00D0D5D82B9E7E /* MiCryptoTests.swift */; };
@@ -62,7 +67,9 @@
 		01EA0F17336B878185081390 /* MiWebLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiWebLoginView.swift; sourceTree = "<group>"; };
 		028389EDD4D2D68BA73947B0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		03EB6FDE05824AFA45771995 /* MiParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiParserTests.swift; sourceTree = "<group>"; };
+		0927148C8AAC8934B54AAD00 /* CloudContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudContractTests.swift; sourceTree = "<group>"; };
 		18B42438CD50B3EF106D0F3E /* SyncLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncLogEntry.swift; sourceTree = "<group>"; };
+		1C072B77F1762B2CA8F106DA /* SyncReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReliabilityTests.swift; sourceTree = "<group>"; };
 		22B7D4B02356356C8416119B /* MiSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiSession.swift; sourceTree = "<group>"; };
 		319B7AE4B010DE68B4A9B4E8 /* SyncHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncHistoryView.swift; sourceTree = "<group>"; };
 		351CE95207B3A629BAFEAB8B /* TrendChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendChartView.swift; sourceTree = "<group>"; };
@@ -91,8 +98,10 @@
 		A2192DFD76FD022C491DCAE0 /* SyncStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStateStore.swift; sourceTree = "<group>"; };
 		A8E5A617ADC0F1D321F07B42 /* StressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressStore.swift; sourceTree = "<group>"; };
 		AB0E091439949F9C42F4F332 /* HealthKitReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitReader.swift; sourceTree = "<group>"; };
+		ABB39744033DFBF9C7D5579B /* HealthKitSyncStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSyncStore.swift; sourceTree = "<group>"; };
 		AE1F12733B158A3063A13166 /* MiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiParser.swift; sourceTree = "<group>"; };
 		BA7904AA83ABA2A588A43824 /* MiWebLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiWebLogin.swift; sourceTree = "<group>"; };
+		BB45C11B7CB32265D7F8DD51 /* SyncWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncWindow.swift; sourceTree = "<group>"; };
 		C0292E261C0563908DCEF274 /* HealthMi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HealthMi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D1C5284FE104D38400CDEF2F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D8DA208F9D9961EAD948D596 /* SyncIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncIntent.swift; sourceTree = "<group>"; };
@@ -100,7 +109,9 @@
 		E84D3AB8A04983B253EB8C2D /* SyncEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngineTests.swift; sourceTree = "<group>"; };
 		E9E40673AC22486334376C0C /* TypeMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypeMapperTests.swift; sourceTree = "<group>"; };
 		EC94990A6984263D47FA0FD8 /* MiAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiAPIClient.swift; sourceTree = "<group>"; };
+		F0559247084DE6DDBDBC9DE9 /* HealthSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSync.swift; sourceTree = "<group>"; };
 		FAE42963B0DA22F1D3A79BD4 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
+		FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +150,7 @@
 		1E268ED12B3089837DDDA467 = {
 			isa = PBXGroup;
 			children = (
+				5D9BE01D1684CF4F5B9BD873 /* Config */,
 				1E1C9D8EDADFA907F781C974 /* HealthMi */,
 				4FC01B8A697BB571479CBB96 /* HealthMiTests */,
 				17B94DB46BE96D589BA8E6E1 /* Frameworks */,
@@ -167,10 +179,12 @@
 		4FC01B8A697BB571479CBB96 /* HealthMiTests */ = {
 			isa = PBXGroup;
 			children = (
+				0927148C8AAC8934B54AAD00 /* CloudContractTests.swift */,
 				47011AAE9C00D0D5D82B9E7E /* MiCryptoTests.swift */,
 				03EB6FDE05824AFA45771995 /* MiParserTests.swift */,
 				76B2D77AD6CC548500DB6E71 /* MiWebLoginTests.swift */,
 				E84D3AB8A04983B253EB8C2D /* SyncEngineTests.swift */,
+				1C072B77F1762B2CA8F106DA /* SyncReliabilityTests.swift */,
 				3621E0CB2D9DCF7D415B0A89 /* SyncStateStoreTests.swift */,
 				E9E40673AC22486334376C0C /* TypeMapperTests.swift */,
 			);
@@ -205,15 +219,25 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		5D9BE01D1684CF4F5B9BD873 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		9D53BEC7B4544155388363B8 /* Sync */ = {
 			isa = PBXGroup;
 			children = (
 				958D958B50ADE261F3509087 /* BackgroundSync.swift */,
+				F0559247084DE6DDBDBC9DE9 /* HealthSync.swift */,
 				DEA2A833A9B953A9D0AE4F1C /* MigrationPlan.swift */,
 				A8E5A617ADC0F1D321F07B42 /* StressStore.swift */,
 				FAE42963B0DA22F1D3A79BD4 /* SyncEngine.swift */,
 				18B42438CD50B3EF106D0F3E /* SyncLogEntry.swift */,
 				A2192DFD76FD022C491DCAE0 /* SyncStateStore.swift */,
+				BB45C11B7CB32265D7F8DD51 /* SyncWindow.swift */,
 			);
 			path = Sync;
 			sourceTree = "<group>";
@@ -237,6 +261,7 @@
 			children = (
 				87623416CD8EFC1BDBD2DF0F /* HealthKitManager.swift */,
 				AB0E091439949F9C42F4F332 /* HealthKitReader.swift */,
+				ABB39744033DFBF9C7D5579B /* HealthKitSyncStore.swift */,
 				713BFAFD2196EB4BC70D288D /* HealthWriter.swift */,
 				6E3657643C7BE5199C6B9A50 /* TypeMapper.swift */,
 			);
@@ -293,9 +318,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					56C47B460AA27C42BDCD6B6E = {
+						DevelopmentTeam = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 						ProvisioningStyle = Automatic;
 					};
 					606AFFE08F6F5FAD360861CE = {
+						DevelopmentTeam = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -336,10 +363,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3A81E0CB347E67854048226A /* CloudContractTests.swift in Sources */,
 				AE9B8F3C1046BEF1A1E73170 /* MiCryptoTests.swift in Sources */,
 				1E1BBEC48FFED51E03E7AC6B /* MiParserTests.swift in Sources */,
 				A47F941A95E58E7D1C0E64A2 /* MiWebLoginTests.swift in Sources */,
 				0A354162109CDE65AA26CC7C /* SyncEngineTests.swift in Sources */,
+				A689716E6F68BA7754E71B68 /* SyncReliabilityTests.swift in Sources */,
 				A938F88BF26BF29DFEBC688E /* SyncStateStoreTests.swift in Sources */,
 				8CA8D47BDDF2A41DF6A631BC /* TypeMapperTests.swift in Sources */,
 			);
@@ -358,7 +387,9 @@
 				C5B2047B22E68C1FADBC9FBB /* DayDetailView.swift in Sources */,
 				8FEE0DFD3AA172522DCC4CBE /* HealthKitManager.swift in Sources */,
 				CE0CB69C3C5B2FE8B0E651D3 /* HealthKitReader.swift in Sources */,
+				0CB996F4D914927353FCC7AD /* HealthKitSyncStore.swift in Sources */,
 				E34BAC788F2E58F70D28C1C1 /* HealthMiApp.swift in Sources */,
+				89D5BFE664910E037B1AA5D2 /* HealthSync.swift in Sources */,
 				49FA8E6B4EC02E7FDA9FC4A2 /* HealthWriter.swift in Sources */,
 				469496648125A41CF5F603C7 /* MiAPIClient.swift in Sources */,
 				F1D08824EAE433674586E02A /* MiCrypto.swift in Sources */,
@@ -378,6 +409,7 @@
 				4C589E48498704B55741C8D1 /* SyncIntent.swift in Sources */,
 				E5C22D99EF84596B7377DB65 /* SyncLogEntry.swift in Sources */,
 				B842B19DBFC2FDB99D43EC24 /* SyncStateStore.swift in Sources */,
+				1E1E5E15FA5203957AC942D5 /* SyncWindow.swift in Sources */,
 				429AC37EF4C3D2AEBDADB563 /* TrendChartView.swift in Sources */,
 				B0E4E89B69AEF0874176C1CD /* TypeMapper.swift in Sources */,
 			);
@@ -396,17 +428,19 @@
 /* Begin XCBuildConfiguration section */
 		1755F6BBE4C43765A22D264A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HealthMi/Support/HealthMi.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HealthMi/Support/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.healthmi.HealthMi;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HEALTHMI_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = HealthMi;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -415,17 +449,19 @@
 		};
 		616B5AFA266412FD23B86E4A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HealthMi/Support/HealthMi.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HealthMi/Support/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.healthmi.HealthMi;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HEALTHMI_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = HealthMi;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -467,7 +503,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -481,7 +517,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -529,7 +565,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -548,7 +584,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -564,15 +600,17 @@
 		};
 		E3EF96E8CFBCC73F3E1B93FE /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.healthmi.HealthMiTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HEALTHMI_BUNDLE_IDENTIFIER).tests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HealthMi.app/HealthMi";
@@ -581,15 +619,17 @@
 		};
 		F83363EA9CC63BF292DCA7B4 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF3FFEB3E5E75827F6126E11 /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = "$(HEALTHMI_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.healthmi.HealthMiTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HEALTHMI_BUNDLE_IDENTIFIER).tests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HealthMi.app/HealthMi";

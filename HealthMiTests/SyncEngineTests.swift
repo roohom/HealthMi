@@ -19,7 +19,10 @@ final class SyncEngineTests: XCTestCase {
         let highWater = Date(timeIntervalSinceNow: -86400) // 1 天前
         let result = await engine.syncWindow(highWater: highWater, backfillDays: 30, forceBackfill: false)
         // start 应该在 highWater 前 1 天（重叠）
-        let expected = Calendar.current.date(byAdding: .day, value: -1, to: highWater)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = MiAPIClient.regionTimeZone
+        let previousDay = calendar.date(byAdding: .day, value: -1, to: highWater)!
+        let expected = calendar.startOfDay(for: previousDay)
         XCTAssertEqual(result.start.timeIntervalSince(expected), 0, accuracy: 60)
     }
 

@@ -6,11 +6,13 @@ import SwiftData
 enum AppError: LocalizedError {
     case noCredentials
     case healthKitUnavailable
+    case syncInProgress
 
     var errorDescription: String? {
         switch self {
         case .noCredentials: return "未找到小米凭据，请先在设置页登录。"
         case .healthKitUnavailable: return "当前设备不支持 HealthKit。"
+        case .syncInProgress: return "请等待当前同步完成后再更换账号。"
         }
     }
 }
@@ -93,6 +95,7 @@ final class AppModel {
     }
 
     func saveCredentials(userId: String, passToken: String) async throws {
+        guard !isSyncing else { throw AppError.syncInProgress }
         try CredentialStore.save(userId: userId, passToken: passToken)
         let engine = SyncEngine()
         try await engine.connect(userId: userId, passToken: passToken)
@@ -105,6 +108,7 @@ final class AppModel {
     }
 
     func disconnect(modelContext: ModelContext? = nil) {
+        guard !isSyncing else { return }
         engine = nil
         CredentialStore.delete()
         isConfigured = false
@@ -132,10 +136,10 @@ final class AppModel {
             healthKitAuthorized = false
             return
         }
-        let status = HealthKitManager.healthStore.authorizationStatus(
-            for: HKQuantityType(.stepCount)
-        )
-        healthKitAuthorized = (status == .sharingAuthorized)
+        // 允许仅授权睡眠等单一类型；每次实际写入仍由 HealthKit 校验对应权限。
+        healthKitAuthorized = HealthKitManager.typesToShare.contains { type in
+            HealthKitManager.healthStore.authorizationStatus(for: type) == .sharingAuthorized
+        }
     }
 
     // MARK: - 同步
@@ -165,6 +169,7 @@ final class AppModel {
     ///   - forceBackfill: 为 true 时忽略增量游标，按 `backfillDays` 重新回填历史。
     ///   - isBackground: 是否为后台同步触发（失败时发送本地通知）。
     func syncAll(modelContext: ModelContext, forceBackfill: Bool = false, isBackground: Bool = false) async {
+        guard !isSyncing else { return }
         isSyncing = true
         lastError = nil
         defer { isSyncing = false }
@@ -188,6 +193,7 @@ final class AppModel {
         }
 
         var messages: [String] = []
+        let cutoff = Date()
         let types = SyncDataType.allCases.filter { enabledTypes.contains($0) }
         totalSyncCount = types.count
         currentSyncIndex = 0
@@ -196,26 +202,23 @@ final class AppModel {
             currentSyncIndex += 1
             // 后台同步被系统取消时，尽早退出
             if Task.isCancelled { break }
-            let highWater = SyncStateStore.state(for: type, in: modelContext)?.lastSyncedEnd
             do {
+                let highWater = try SyncStateStore.lastSyncedEnd(for: type, container: modelContext.container)
                 if type == .stress {
                     // 压力数据不走 HealthKit，走 SwiftData
                     let result = try await engine?.syncStress(
                         highWater: highWater, backfillDays: backfillDays,
-                        forceBackfill: forceBackfill
+                        forceBackfill: forceBackfill, now: cutoff
                     )
                     if let result {
-                        if forceBackfill {
-                            StressStore.clearAll(in: modelContext)
-                        }
-                        let added = StressStore.save(samples: result.samples, in: modelContext)
+                        let added = try StressStore.apply(
+                            samples: result.samples, window: result.window,
+                            highWater: result.outcome.highWater, replace: forceBackfill,
+                            container: modelContext.container
+                        )
                         let outcome = SyncOutcome(
                             type: .stress, fetched: result.samples.count,
                             added: added, highWater: result.outcome.highWater
-                        )
-                        SyncStateStore.record(
-                            type: .stress, highWater: outcome.highWater,
-                            added: added, in: modelContext
                         )
                         outcomes[.stress] = outcome
                         messages.append("压力 +\(added)")
@@ -227,15 +230,15 @@ final class AppModel {
                 } else {
                     let outcome = try await engine?.sync(
                         type: type, highWater: highWater, backfillDays: backfillDays,
-                        forceBackfill: forceBackfill
+                        forceBackfill: forceBackfill, now: cutoff
                     )
                     if let outcome {
-                        SyncStateStore.record(
+                        try SyncStateStore.record(
                             type: type, highWater: outcome.highWater,
                             added: outcome.added, in: modelContext
                         )
                         outcomes[type] = outcome
-                        messages.append("\(type.displayName) +\(outcome.added)")
+                        messages.append("\(type.displayName) 新增 \(outcome.added) · 更新 \(outcome.updated)")
                         SyncLogStore.append(
                             type: type, fetched: outcome.fetched,
                             added: outcome.added, success: true, in: modelContext

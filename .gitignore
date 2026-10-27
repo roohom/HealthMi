@@ -13,6 +13,7 @@ build-device/
 # Swift Package Manager
 .build/
 .swiftpm/
+Config/Signing.local.xcconfig
 
 # 本地工具/规划笔记
 .zcode/

@@ -40,6 +40,7 @@ struct DashboardView: View {
                             Text(region.displayName).tag(region.rawValue)
                         }
                     }
+                    .disabled(model.isSyncing)
                     LabeledContent("Apple 健康", value: model.healthKitAuthorized ? "已授权" : "未授权")
                     if !model.healthKitAuthorized {
                         Button("请求健康权限") {
@@ -54,6 +55,7 @@ struct DashboardView: View {
                     Button("更新小米凭据") {
                         showWebLogin = true
                     }
+                    .disabled(model.isSyncing)
                     .sheet(isPresented: $showWebLogin) {
                         MiWebLoginView()
                     }
@@ -105,7 +107,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("重新回填历史", systemImage: "clock.arrow.circlepath")
                             .font(.headline)
-                        Text("忽略增量游标，按所选范围全量重拉并重写。\n用于补历史或修正数据，不会产生重复。")
+                        Text("重新读取所选范围，补齐历史并更新修订数据。\n只清理 HealthMi 对应的过时记录，失败后可重试。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -137,7 +139,7 @@ struct DashboardView: View {
                     }
                     Button("取消", role: .cancel) {}
                 } message: {
-                    Text("将从最早 \(backfillDaysLabel) 重新拉取并重写。由于按 externalID 去重，已存在的数据不会重复。")
+                    Text("将重新读取所选 \(backfillDaysLabel)，补齐缺失并更新修订记录；HealthMi 的过时记录将在新版本保存后清理。")
                 }
 
                 // ---------- 数据概览 ----------
@@ -216,6 +218,7 @@ struct DashboardView: View {
                     Button("退出登录并清除小米凭据", role: .destructive) {
                         model.disconnect(modelContext: modelContext)
                     }
+                    .disabled(model.isSyncing)
                 }
             }
             .navigationTitle("HealthMi")

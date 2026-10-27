@@ -4,6 +4,10 @@
 
 把小米运动健康（Mi Fitness）云端的健康数据，写入 Apple 健康（HealthKit）的纯 iOS App。
 
+本 fork 基于 [ShawnDiego/HealthMi](https://github.com/ShawnDiego/HealthMi)，增加同步时间窗、原生版本更新、睡眠重复校验和失败恢复。具体行为、旧记录迁移范围和验证方法见 [同步可靠性说明](docs/sync-reliability.md)。
+
+可在 Mac 直接运行 `swift test` 验证同步核心；不需要模拟器、小米账号或真实健康数据。真机签名可在忽略提交的 `Config/Signing.local.xcconfig` 中设置，详见说明。
+
 ## 功能特性
 
 - **9 类数据同步**：日常活动（步数/距离/卡路里）、心率（含静息）、睡眠（含分期）、血氧、呼吸频率、心率变异性、体重/体脂/BMI/肌肉量/基础代谢、运动记录（含心率）、压力
@@ -25,7 +29,7 @@
 1. **登录**：用小米账号 `userId` / `passToken`（account.xiaomi.com 的 Cookie）经 `serviceLogin` 换取 `ssecurity` 与会话 Cookie；
 2. **签名请求**：每个请求用 `signed_nonce = SHA256(ssecurity||nonce)` 做 RC4 加密 + SHA1 签名，调用 `hlth.io.mi.com` 的 `get_fitness_data_by_time` / `get_sport_records_by_time`；
 3. **数据映射**：步数/距离/卡路里、心率（含静息）、睡眠（含分期）、血氧、呼吸频率、心率变异性、体重/体脂/BMI/肌肉量/基础代谢、运动记录、压力 → HealthKit 类型（压力无对应类型，存 App 内）；
-4. **幂等写入**：每个样本带 `HKMetadataKeyExternalUUID`，按类型+时间区间查重后**一次批量保存**（复刻 [healthloom.app](https://github.com/wpowiertowski/healthloom.app) 的 `HealthKitWriter` 模式）。
+4. **幂等更新**：使用账号命名空间、稳定业务 ID 和 `HKMetadataKeySyncIdentifier` / `HKMetadataKeySyncVersion` 更新样本；新版本读回验证通过后，只清理本 App 精确匹配的过时记录。未完成的写入计划保存在本机，重试不会重复递增版本。
 
 ## 数据映射
 

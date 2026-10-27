@@ -19,6 +19,47 @@ final class StressRecord {
 /// 压力数据存取（MainActor，SwiftData 上下文非 Sendable）。
 @MainActor
 enum StressStore {
+    /// Update a selected window and its cursor in one isolated save. No autosave
+    /// may persist a range deletion before the replacement has been validated.
+    static func apply(samples: [MiStressSample], window: SyncWindow, highWater: Date,
+                      replace: Bool, container: ModelContainer) throws -> Int {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        do {
+            try Task.checkCancellation()
+            let start = window.start
+            let end = window.end
+            let descriptor = FetchDescriptor<StressRecord>(
+                predicate: #Predicate { $0.timestamp >= start && $0.timestamp < end }
+            )
+            let existing = try context.fetch(descriptor)
+            var byID = Dictionary(existing.map { ($0.externalID, $0) }, uniquingKeysWith: { first, _ in first })
+            let incomingIDs = Set(samples.filter { $0.timestamp >= start && $0.timestamp < end }.map(\.id))
+            if replace {
+                for record in existing where !incomingIDs.contains(record.externalID) { context.delete(record) }
+            }
+            var added = 0
+            for sample in samples where sample.timestamp >= start && sample.timestamp < end {
+                if let record = byID[sample.id] { record.stressScore = sample.stressScore }
+                else {
+                    let record = StressRecord(externalID: sample.id, timestamp: sample.timestamp, stressScore: sample.stressScore)
+                    context.insert(record)
+                    byID[sample.id] = record
+                    added += 1
+                }
+            }
+            let state = try SyncStateStore.ensureState(for: .stress, in: context)
+            state.lastSyncedEnd = highWater
+            state.lastSyncAt = Date()
+            state.lastAddedCount = added
+            try Task.checkCancellation()
+            try context.save()
+            return added
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
 
     /// 批量写入压力记录，按 externalID 去重，返回新增条数。
     @discardableResult

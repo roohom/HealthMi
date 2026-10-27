@@ -105,7 +105,7 @@ final class TypeMapperTests: XCTestCase {
         XCTAssertEqual(inBed.value, HKCategoryValueSleepAnalysis.inBed.rawValue)
 
         // deep 段应映射为 AsleepDeep
-        let deepUUID = "mi_fitness_sleep_123_456_deep_\(Int(start.timeIntervalSince1970))"
+        let deepUUID = "mi_fitness_sleep_123_456_segment_\(Int(start.timeIntervalSince1970))"
         let deep = try XCTUnwrap(samples.first {
             ($0.metadata?[HKMetadataKeyExternalUUID] as? String) == deepUUID
         })

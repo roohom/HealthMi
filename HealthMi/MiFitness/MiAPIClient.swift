@@ -111,11 +111,14 @@ actor MiAPIClient {
                 let baseDelay = UInt64(pow(2.0, Double(attempt - 1))) * 1_000_000_000
                 let jitter = UInt64.random(in: 0...200_000_000)
                 AppLog.apiClient.info("重试 \(attempt)/\(retries) path=\(path)")
-                try? await Task.sleep(nanoseconds: baseDelay + jitter)
+                try await Task.sleep(nanoseconds: baseDelay + jitter)
             }
             do {
                 return try await signedRequestOnce(path: path, dataString: dataString)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let error as MiAPIError {
+                if Task.isCancelled { throw CancellationError() }
                 if error.isAuthError || !error.isRetriable {
                     throw error
                 }
@@ -186,7 +189,10 @@ actor MiAPIClient {
             throw MiAPIError.api(code: code, message: MiJSON.string(obj["message"]))
         }
         // 与 Python 一致：返回内层 result 字典（data_list / sport_records 都在里面）
-        return MiJSON.object(from: Data(plain))?["result"] as? [String: Any] ?? [:]
+        guard let result = obj["result"] as? [String: Any] else {
+            throw MiAPIError.invalidResponse("缺少 result 对象")
+        }
+        return result
     }
 
     private func percentEncode(_ value: String) -> String {
@@ -209,17 +215,19 @@ actor MiAPIClient {
             )
             let result = try await signedRequest(path: dataPath, dataString: body)
 
-            if let list = result["data_list"] as? [[String: Any]] {
-                items.append(contentsOf: list.map(Self.makeItem))
+            guard let list = result["data_list"] as? [[String: Any]] else {
+                throw MiAPIError.invalidResponse("缺少 data_list，不能视为完整空结果")
             }
+            items.append(contentsOf: list.map(Self.makeItem))
             let hasMore = MiJSON.bool(result["has_more"]) ?? false
             let cursor = MiJSON.string(result["next_key"])
-            if !hasMore || cursor == nil { break }
-            if seen.contains(cursor!) { throw MiAPIError.cursorLoop }
-            seen.insert(cursor!)
+            if !hasMore { break }
+            guard let cursor, !cursor.isEmpty else { throw MiAPIError.invalidResponse("分页缺少 next_key") }
+            if seen.contains(cursor) { throw MiAPIError.cursorLoop }
+            seen.insert(cursor)
             nextKey = cursor
             // 分页请求间隔，避免高频请求触发小米限流
-            try? await Task.sleep(nanoseconds: pageDelayNs)
+            try await Task.sleep(nanoseconds: pageDelayNs)
         }
         return items
     }
@@ -238,17 +246,19 @@ actor MiAPIClient {
             )
             let result = try await signedRequest(path: sportRecordsPath, dataString: body)
 
-            if let list = result["sport_records"] as? [[String: Any]] {
-                items.append(contentsOf: list.map(Self.makeItem))
+            guard let list = result["sport_records"] as? [[String: Any]] else {
+                throw MiAPIError.invalidResponse("缺少 sport_records，不能视为完整空结果")
             }
+            items.append(contentsOf: list.map(Self.makeItem))
             let hasMore = MiJSON.bool(result["has_more"]) ?? false
             let cursor = MiJSON.string(result["next_key"])
-            if !hasMore || cursor == nil { break }
-            if seen.contains(cursor!) { throw MiAPIError.cursorLoop }
-            seen.insert(cursor!)
+            if !hasMore { break }
+            guard let cursor, !cursor.isEmpty else { throw MiAPIError.invalidResponse("分页缺少 next_key") }
+            if seen.contains(cursor) { throw MiAPIError.cursorLoop }
+            seen.insert(cursor)
             nextKey = cursor
             // 分页请求间隔，避免高频请求触发小米限流
-            try? await Task.sleep(nanoseconds: pageDelayNs)
+            try await Task.sleep(nanoseconds: pageDelayNs)
         }
         return items
     }

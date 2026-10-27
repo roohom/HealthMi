@@ -10,8 +10,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.1.1"
+    CURRENT_PROJECT_VERSION: "2"
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
     # 不写死团队 ID：真机签名时在 Xcode 中选择自己的开发团队
@@ -22,6 +22,9 @@ targets:
   HealthMi:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     sources:
       - path: HealthMi
         excludes:
@@ -30,7 +33,8 @@ targets:
       - sdk: WebKit.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.healthmi.HealthMi
+        PRODUCT_BUNDLE_IDENTIFIER: $(HEALTHMI_BUNDLE_IDENTIFIER)
+        DEVELOPMENT_TEAM: $(HEALTHMI_DEVELOPMENT_TEAM)
         PRODUCT_NAME: HealthMi
         INFOPLIST_FILE: HealthMi/Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO
@@ -43,13 +47,35 @@ targets:
   HealthMiTests:
     type: bundle.unit-test
     platform: iOS
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     sources:
       - path: HealthMiTests
     dependencies:
       - target: HealthMi
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.healthmi.HealthMiTests
+        PRODUCT_BUNDLE_IDENTIFIER: $(HEALTHMI_BUNDLE_IDENTIFIER).tests
+        DEVELOPMENT_TEAM: $(HEALTHMI_DEVELOPMENT_TEAM)
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HealthMi.app/HealthMi"
         BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  HealthMi:
+    build:
+      targets:
+        HealthMi: all
+    test:
+      targets:
+        - HealthMiTests
+  HealthMiCloudCheck:
+    build:
+      targets:
+        HealthMi: all
+    test:
+      targets:
+        - HealthMiTests
+      environmentVariables:
+        HEALTHMI_READONLY_CLOUD_CHECK: "1"
