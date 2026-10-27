@@ -169,6 +169,10 @@ final class AppModel {
     ///   - forceBackfill: 为 true 时忽略增量游标，按 `backfillDays` 重新回填历史。
     ///   - isBackground: 是否为后台同步触发（失败时发送本地通知）。
     func syncAll(modelContext: ModelContext, forceBackfill: Bool = false, isBackground: Bool = false) async {
+        guard !HealthSyncSafety.writesPaused else {
+            lastError = HealthSyncError.readOnlyCheck.localizedDescription
+            return
+        }
         guard !isSyncing else { return }
         isSyncing = true
         lastError = nil

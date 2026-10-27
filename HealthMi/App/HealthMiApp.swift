@@ -8,6 +8,7 @@ struct HealthMiApp: App {
     @State private var model = AppModel()
 
     init() {
+        HealthSyncSafety.prepareForLaunch()
         let schema = Schema([SyncState.self, StressRecord.self, SyncLogEntry.self])
         let configuration = ModelConfiguration(schema: schema)
         do {
@@ -22,18 +23,23 @@ struct HealthMiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(model)
-                .modelContainer(modelContainer)
-                .task {
-                    model.bootstrap()
-                    await NotificationManager.requestAuthorization()
-                    BackgroundSync.register { [model, modelContainer] in
-                        let context = modelContainer.mainContext
-                        await model.syncAll(modelContext: context, isBackground: true)
+            if HealthSyncSafety.writesPaused {
+                ContentUnavailableView("云端只读验收", systemImage: "checkmark.shield",
+                                       description: Text("健康数据同步已暂停，等待验收确认。"))
+            } else {
+                RootView()
+                    .environment(model)
+                    .modelContainer(modelContainer)
+                    .task {
+                        model.bootstrap()
+                        await NotificationManager.requestAuthorization()
+                        BackgroundSync.register { [model, modelContainer] in
+                            let context = modelContainer.mainContext
+                            await model.syncAll(modelContext: context, isBackground: true)
+                        }
+                        BackgroundSync.schedule()
                     }
-                    BackgroundSync.schedule()
-                }
+            }
         }
     }
 }

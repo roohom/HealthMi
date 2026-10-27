@@ -27,6 +27,45 @@ final class SyncReliabilityTests: XCTestCase {
                          start: window().start, end: window().end, value: value, unit: "count")
     }
 
+    func testCloudCheckPauseSurvivesRelaunchUntilExplicitlyResumed() throws {
+        let suite = "HealthMiCloudCheckTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        HealthSyncSafety.prepareForLaunch(environment: ["HEALTHMI_READONLY_CLOUD_CHECK": "1"], defaults: defaults)
+        HealthSyncSafety.prepareForLaunch(environment: [:], defaults: defaults)
+        XCTAssertTrue(HealthSyncSafety.writesArePaused(environment: [:], defaults: defaults))
+        HealthSyncSafety.prepareForLaunch(environment: ["HEALTHMI_RESUME_HEALTH_WRITES": "1"], defaults: defaults)
+        XCTAssertFalse(HealthSyncSafety.writesArePaused(environment: [:], defaults: defaults))
+        HealthSyncSafety.prepareForLaunch(environment: ["HEALTHMI_READONLY_CLOUD_CHECK": "1",
+                                                        "HEALTHMI_RESUME_HEALTH_WRITES": "1"], defaults: defaults)
+        XCTAssertTrue(HealthSyncSafety.writesArePaused(environment: [:], defaults: defaults))
+    }
+
+    func testReadOnlyCheckCannotWriteOrReplayPendingHealthPlan() async throws {
+        let store = MemoryHealthStore()
+        let journal = try journal()
+        let normal = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
+        await store.setFault(.save)
+        do {
+            _ = try await normal.synchronize([steps(3000)], account: "A", dataType: "daily", window: window())
+            XCTFail("Expected an unfinished write plan")
+        } catch HealthSyncError.verificationFailed {}
+        let paths = try FileManager.default.contentsOfDirectory(at: journal.directory, includingPropertiesForKeys: nil)
+        let before = try paths.map { try Data(contentsOf: $0) }
+        let diagnostic = HealthSyncCoordinator(store: store, journal: journal, allowWrites: false)
+        do {
+            try await diagnostic.resume(account: "A", dataType: "daily")
+            XCTFail("Read-only diagnostics must not recover pending writes")
+        } catch HealthSyncError.readOnlyCheck {}
+        do {
+            _ = try await diagnostic.synchronize([steps(8000)], account: "A", dataType: "daily", window: window())
+            XCTFail("Read-only diagnostics must not create writes")
+        } catch HealthSyncError.readOnlyCheck {}
+        let stored = await store.snapshot()
+        XCTAssertTrue(stored.isEmpty)
+        XCTAssertEqual(try paths.map { try Data(contentsOf: $0) }, before)
+    }
+
     func testSevenCalendarDaysAndHalfOpenBoundary() {
         let w = window()
         XCTAssertEqual(w.end.timeIntervalSince(w.start), 7 * 86400)
@@ -52,7 +91,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testIdenticalSyncIsIdempotentAndChangedTotalUpdates() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         _ = try await sync.synchronize([steps(3000)], account: "account", dataType: "daily", window: window())
         let repeated = try await sync.synchronize([steps(3000), steps(3000)], account: "account", dataType: "daily", window: window())
         XCTAssertEqual(repeated.added, 0)
@@ -68,7 +107,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testAccountNamespacesAreIndependent() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         _ = try await sync.synchronize([steps(3000)], account: "A", dataType: "daily", window: window())
         _ = try await sync.synchronize([steps(8000)], account: "B", dataType: "daily", window: window())
         let snapshot = await store.snapshot()
@@ -79,7 +118,7 @@ final class SyncReliabilityTests: XCTestCase {
     func testWriteFailureKeepsOldDataAndResumesExactVersion() async throws {
         let store = MemoryHealthStore()
         let journal = try journal()
-        let sync = HealthSyncCoordinator(store: store, journal: journal)
+        let sync = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         _ = try await sync.synchronize([steps(3000)], account: "private-account", dataType: "daily", window: window())
         await store.setFault(.save)
         do {
@@ -88,7 +127,7 @@ final class SyncReliabilityTests: XCTestCase {
         } catch {}
         let before = await store.values()
         XCTAssertEqual(before, [3000])
-        let restarted = HealthSyncCoordinator(store: store, journal: journal)
+        let restarted = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         try await restarted.resume(account: "private-account", dataType: "daily")
         let after = await store.values()
         let snapshot = await store.snapshot()
@@ -110,7 +149,7 @@ final class SyncReliabilityTests: XCTestCase {
         let sample = HealthSyncSample(key: "mi_fitness_sleep_device_111_inBed", type: "sleep", kind: .category,
                                      start: start, end: start.addingTimeInterval(600), value: 0,
                                      scope: "night", replacesScope: true, legacyScopePrefix: "mi_fitness_sleep_device_")
-        let sync = HealthSyncCoordinator(store: store, journal: journal)
+        let sync = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         await store.setFault(.delete)
         do {
             _ = try await sync.synchronize([sample], account: "A", dataType: "sleep", window: window())
@@ -118,7 +157,7 @@ final class SyncReliabilityTests: XCTestCase {
         } catch {}
         let interrupted = await store.snapshot()
         XCTAssertEqual(interrupted.count, 4)
-        let restarted = HealthSyncCoordinator(store: store, journal: journal)
+        let restarted = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         _ = try await restarted.synchronize([sample], account: "A", dataType: "sleep", window: window())
         let restored = await store.snapshot()
         XCTAssertEqual(restored.count, 2)
@@ -131,7 +170,7 @@ final class SyncReliabilityTests: XCTestCase {
         let old = StoredHealthSample(uuid: UUID(), type: candidate.type, start: candidate.start, end: candidate.end,
                                      syncID: nil, version: 0, fingerprint: nil, externalID: candidate.key, scope: nil)
         let store = MemoryHealthStore(seed: [old])
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         await store.setFault(.silentSave)
         do {
             _ = try await sync.synchronize([candidate], account: "A", dataType: "daily", window: window())
@@ -153,7 +192,7 @@ final class SyncReliabilityTests: XCTestCase {
         nap.key = "nap_segment_1"
         nap.scope = "nap"
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         _ = try await sync.synchronize([first, removed, nap], account: "A", dataType: "sleep", window: window())
         var corrected = first
         corrected.value = 4
@@ -168,7 +207,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testEmptyCloudResultDoesNotDeleteHealthHistory() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         _ = try await sync.synchronize([steps(3000)], account: "A", dataType: "daily", window: window())
         _ = try await sync.synchronize([], account: "A", dataType: "daily", window: window())
         let snapshot = await store.snapshot()
@@ -177,7 +216,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testConflictingBatchStopsBeforeWriting() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         do {
             _ = try await sync.synchronize([steps(3000), steps(8000)], account: "A", dataType: "daily", window: window())
             XCTFail("Expected conflicting content")
@@ -225,7 +264,7 @@ final class SyncReliabilityTests: XCTestCase {
     func testPartialBatchFailureReplaysWithoutExtraVersions() async throws {
         let store = MemoryHealthStore()
         let journal = try journal()
-        let sync = HealthSyncCoordinator(store: store, journal: journal)
+        let sync = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         var a = steps(3000)
         var b = steps(2000)
         b.key += "_b"
@@ -239,7 +278,7 @@ final class SyncReliabilityTests: XCTestCase {
         } catch {}
         let interrupted = await store.snapshot()
         XCTAssertEqual(interrupted.count, 2)
-        let restarted = HealthSyncCoordinator(store: store, journal: journal)
+        let restarted = HealthSyncCoordinator(store: store, journal: journal, allowWrites: true)
         try await restarted.resume(account: "A", dataType: "daily")
         let values = await store.values()
         let restored = await store.snapshot()
@@ -249,7 +288,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testConcurrentSyncCannotPlanTwoWrites() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         await store.pauseNextLoad()
         let task = Task { try await sync.synchronize([steps(3000)], account: "A", dataType: "daily", window: window()) }
         await store.waitUntilPaused()
@@ -265,7 +304,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testCancellationBeforeWritingKeepsHealthStoreUnchanged() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         await store.pauseNextLoad()
         let task = Task { try await sync.synchronize([steps(3000)], account: "A", dataType: "daily", window: window()) }
         await store.waitUntilPaused()
@@ -296,7 +335,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testMissingOptionalFieldsDoNotAuthorizeScopeDeletion() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         var a = steps(100)
         var b = steps(200)
         a.scope = "workout"
@@ -339,7 +378,7 @@ final class SyncReliabilityTests: XCTestCase {
 
     func testCorrectedZeroValueIsWritten() async throws {
         let store = MemoryHealthStore()
-        let sync = HealthSyncCoordinator(store: store, journal: try journal())
+        let sync = HealthSyncCoordinator(store: store, journal: try journal(), allowWrites: true)
         _ = try await sync.synchronize([steps(3000)], account: "A", dataType: "daily", window: window())
         _ = try await sync.synchronize([steps(0)], account: "A", dataType: "daily", window: window())
         let values = await store.values()

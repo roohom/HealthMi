@@ -62,6 +62,10 @@ xcodebuild -project HealthMi.xcodeproj -scheme HealthMi \
 
 `HealthMiCloudCheck` 是显式启用的真机只读取数诊断 scheme，可配合 `-only-testing:HealthMiTests/CloudContractTests` 使用。它使用手机上已经登录的账号，只输出字段名、记录条数和时间字段关系，不写入健康数据库，也不输出凭据、SID、日期或原始健康内容。普通测试 scheme 默认跳过这个检查。
 
+只读诊断启动后会在本机持久化暂停标记：不启动普通界面、授权或后台同步，并拒绝健康写入和待恢复计划重放。测试退出或系统重新启动 App 后仍保持暂停。只有完成只读检查并确认真实写入计划后，才使用 `HEALTHMI_RESUME_HEALTH_WRITES=1` 启动 App 恢复同步；不要在只读 scheme 中设置该变量。凭据缺失或返回零条睡眠记录不会视为真实云端验收通过。
+
+冲突诊断仅在手机内比较候选，输出分组条数、差异字段名以及 `version` 和结束时间是否相等，不输出字段值或会话身份。网络和认证失败只输出错误类别及代码，避免 XCTest 展开服务器消息或携带登录信息的重定向 URL。发现 `version`、`is_uncomplete` 等字段不代表已证明其修订语义；无法确定取舍时，契约测试保持失败，继续阻止写入。
+
 ## 真机签名
 
 新建不提交的 `Config/Signing.local.xcconfig`：

@@ -1,6 +1,28 @@
 import CryptoKit
 import Foundation
 
+/// Keep diagnostic installs read-only even if iOS relaunches the app after XCTest exits.
+enum HealthSyncSafety {
+    private static let pausedKey = "healthmi.cloudCheckWritesPaused"
+
+    static func prepareForLaunch(environment: [String: String] = ProcessInfo.processInfo.environment,
+                                 defaults: UserDefaults = .standard) {
+        if environment["HEALTHMI_READONLY_CLOUD_CHECK"] == "1" {
+            defaults.set(true, forKey: pausedKey)
+        } else if environment["HEALTHMI_RESUME_HEALTH_WRITES"] == "1" {
+            defaults.set(false, forKey: pausedKey)
+        }
+    }
+
+    static func writesArePaused(environment: [String: String], defaults: UserDefaults) -> Bool {
+        environment["HEALTHMI_READONLY_CLOUD_CHECK"] == "1" || defaults.bool(forKey: pausedKey)
+    }
+
+    static var writesPaused: Bool {
+        writesArePaused(environment: ProcessInfo.processInfo.environment, defaults: .standard)
+    }
+}
+
 enum HealthSyncMetadata {
     static let fingerprint = "com.healthmi.sync.contentHash"
     static let scope = "com.healthmi.sync.scope"
@@ -90,10 +112,11 @@ protocol HealthSyncStore: Sendable {
 }
 
 enum HealthSyncError: LocalizedError {
-    case busy, invalidSample(String), conflictingSample(String), verificationFailed, invalidJournal
+    case busy, readOnlyCheck, invalidSample(String), conflictingSample(String), verificationFailed, invalidJournal
     var errorDescription: String? {
         switch self {
         case .busy: return "已有同步任务正在运行，请稍后重试。"
+        case .readOnlyCheck: return "云端只读验收期间，健康数据同步已暂停。"
         case .invalidSample(let key): return "样本时间或数值无效：\(key)"
         case .conflictingSample(let key): return "同一记录存在冲突内容，已停止写入：\(key)"
         case .verificationFailed: return "HealthKit 写入或清理尚未完成，下次同步将继续恢复。"
@@ -164,11 +187,14 @@ struct PendingSyncJournal: Sendable {
 actor HealthSyncCoordinator {
     private let store: any HealthSyncStore
     private let journal: PendingSyncJournal
+    private let allowWrites: Bool
     private var running = false
 
-    init(store: any HealthSyncStore, journal: PendingSyncJournal = .applicationDefault) {
+    init(store: any HealthSyncStore, journal: PendingSyncJournal = .applicationDefault,
+         allowWrites: Bool = !HealthSyncSafety.writesPaused) {
         self.store = store
         self.journal = journal
+        self.allowWrites = allowWrites
     }
 
     static func accountNamespace(_ account: String) -> String {
@@ -180,6 +206,7 @@ actor HealthSyncCoordinator {
     }
 
     func resume(account: String, dataType: String) async throws {
+        guard allowWrites else { throw HealthSyncError.readOnlyCheck }
         guard !running else { throw HealthSyncError.busy }
         running = true
         defer { running = false }
@@ -200,6 +227,7 @@ actor HealthSyncCoordinator {
 
     func synchronize(_ input: [HealthSyncSample], account: String, dataType: String,
                      window: SyncWindow) async throws -> HealthSyncResult {
+        guard allowWrites else { throw HealthSyncError.readOnlyCheck }
         guard !running else { throw HealthSyncError.busy }
         running = true
         defer { running = false }

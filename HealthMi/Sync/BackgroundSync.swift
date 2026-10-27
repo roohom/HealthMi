@@ -11,6 +11,7 @@ enum BackgroundSync {
 
     @MainActor
     static func register(syncHandler: @escaping @MainActor () async -> Void) {
+        guard !HealthSyncSafety.writesPaused else { return }
         BGTaskScheduler.shared.register(forTaskWithIdentifier: taskIdentifier, using: nil) { task in
             guard let refreshTask = task as? BGAppRefreshTask else {
                 task.setTaskCompleted(success: false)
@@ -32,6 +33,7 @@ enum BackgroundSync {
     }
 
     static func schedule() {
+        guard !HealthSyncSafety.writesPaused else { return }
         let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)
         do {
