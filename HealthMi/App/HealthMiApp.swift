@@ -23,23 +23,19 @@ struct HealthMiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if HealthSyncSafety.writesPaused {
-                ContentUnavailableView("云端只读验收", systemImage: "checkmark.shield",
-                                       description: Text("健康数据同步已暂停，等待验收确认。"))
-            } else {
-                RootView()
-                    .environment(model)
-                    .modelContainer(modelContainer)
-                    .task {
-                        model.bootstrap()
-                        await NotificationManager.requestAuthorization()
-                        BackgroundSync.register { [model, modelContainer] in
-                            let context = modelContainer.mainContext
-                            await model.syncAll(modelContext: context, isBackground: true)
-                        }
-                        BackgroundSync.schedule()
+            RootView()
+                .environment(model)
+                .modelContainer(modelContainer)
+                .task {
+                    model.bootstrap()
+                    guard !HealthSyncSafety.writesPaused else { return }
+                    await NotificationManager.requestAuthorization()
+                    BackgroundSync.register { [model, modelContainer] in
+                        let context = modelContainer.mainContext
+                        await model.syncAll(modelContext: context, isBackground: true)
                     }
-            }
+                    BackgroundSync.schedule()
+                }
         }
     }
 }

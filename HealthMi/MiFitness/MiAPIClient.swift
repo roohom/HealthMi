@@ -203,7 +203,26 @@ actor MiAPIClient {
 
     /// 按 key 拉取某时间区间的数据（对应 `_fetch_key`）。
     func fetchData(key: String, startTime: Int, endTime: Int) async throws -> [MiItem] {
-        var items: [MiItem] = []
+        let raw = try await fetchRawData(key: key, startTime: startTime, endTime: endTime)
+        return raw.map(Self.makeItem)
+    }
+
+    #if DEBUG
+    /// Device-memory-only wire snapshot for the explicit, paused cloud diagnostic.
+    /// Serialization happens before makeItem drops outer metadata. Never log or persist this data.
+    func readOnlySleepWireSnapshot(startTime: Int, endTime: Int) async throws -> (Data, [MiItem]) {
+        guard ProcessInfo.processInfo.environment["HEALTHMI_READONLY_CLOUD_CHECK"] == "1",
+              HealthSyncSafety.writesPaused else {
+            throw MiAPIError.invalidResponse("只读诊断未启用")
+        }
+        let raw = try await fetchRawData(key: "sleep", startTime: startTime, endTime: endTime)
+        let snapshot = try JSONSerialization.data(withJSONObject: raw, options: .sortedKeys)
+        return (snapshot, raw.map(Self.makeItem))
+    }
+    #endif
+
+    private func fetchRawData(key: String, startTime: Int, endTime: Int) async throws -> [[String: Any]] {
+        var items: [[String: Any]] = []
         var nextKey: String?
         var seen = Set<String>()
         var page = 0
@@ -218,7 +237,7 @@ actor MiAPIClient {
             guard let list = result["data_list"] as? [[String: Any]] else {
                 throw MiAPIError.invalidResponse("缺少 data_list，不能视为完整空结果")
             }
-            items.append(contentsOf: list.map(Self.makeItem))
+            items.append(contentsOf: list)
             let hasMore = MiJSON.bool(result["has_more"]) ?? false
             let cursor = MiJSON.string(result["next_key"])
             if !hasMore { break }

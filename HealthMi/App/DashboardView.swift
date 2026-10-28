@@ -32,20 +32,30 @@ struct DashboardView: View {
         @Bindable var model = model
         NavigationStack {
             List {
+                if HealthSyncSafety.writesPaused {
+                    Section {
+                        Label("同步暂停 · 只读模式", systemImage: "pause.circle")
+                            .accessibilityIdentifier("healthmi.readOnlyBanner")
+                        Text("可以查看已有数据和同步历史。完成睡眠记录检查并确认后，再恢复同步。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section("账号") {
                     LabeledContent("小米账号", value: model.accountID)
-                    LabeledContent("连接状态", value: model.connected ? "已连接" : "未连接")
+                    LabeledContent("连接状态", value: HealthSyncSafety.writesPaused ? "已保存登录（同步暂停）" : model.connected ? "已连接" : "未连接")
                     Picker("区域", selection: $regionRaw) {
                         ForEach(MiRegion.allCases) { region in
                             Text(region.displayName).tag(region.rawValue)
                         }
                     }
-                    .disabled(model.isSyncing)
+                    .disabled(model.isSyncing || HealthSyncSafety.writesPaused)
                     LabeledContent("Apple 健康", value: model.healthKitAuthorized ? "已授权" : "未授权")
                     if !model.healthKitAuthorized {
                         Button("请求健康权限") {
                             Task { try? await model.requestHealthKit() }
                         }
+                        .disabled(HealthSyncSafety.writesPaused)
                     }
                     if model.authNeedsRefresh {
                         Label("小米凭据已过期，请更新后重试", systemImage: "exclamationmark.triangle")
@@ -55,7 +65,7 @@ struct DashboardView: View {
                     Button("更新小米凭据") {
                         showWebLogin = true
                     }
-                    .disabled(model.isSyncing)
+                    .disabled(model.isSyncing || HealthSyncSafety.writesPaused)
                     .sheet(isPresented: $showWebLogin) {
                         MiWebLoginView()
                     }
@@ -87,7 +97,7 @@ struct DashboardView: View {
                             .padding(.vertical, 4)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(model.isSyncing)
+                        .disabled(model.isSyncing || HealthSyncSafety.writesPaused)
                     }
                     .padding(.vertical, 4)
                 } header: {
@@ -119,11 +129,12 @@ struct DashboardView: View {
                             Text("全部（3650 天）").tag(3650)
                         }
                         .pickerStyle(.menu)
+                        .disabled(HealthSyncSafety.writesPaused)
 
                         Button("重新回填 \(backfillDaysLabel)") {
                             showRebackfillConfirm = true
                         }
-                        .disabled(model.isSyncing)
+                        .disabled(model.isSyncing || HealthSyncSafety.writesPaused)
                     }
                     .padding(.vertical, 4)
                 } header: {
@@ -164,7 +175,7 @@ struct DashboardView: View {
                     } label: {
                         Label("导出最近 7 天数据（CSV）", systemImage: "square.and.arrow.up")
                     }
-                    .disabled(model.trends.isEmpty)
+                    .disabled(model.trends.isEmpty || HealthSyncSafety.writesPaused)
                 } header: {
                     Text("数据导出")
                 }
@@ -196,6 +207,7 @@ struct DashboardView: View {
                             get: { model.isTypeEnabled(type) },
                             set: { model.setTypeEnabled(type, enabled: $0) }
                         ))
+                        .disabled(HealthSyncSafety.writesPaused)
                     }
                 } header: {
                     Text("同步类别")
@@ -218,7 +230,7 @@ struct DashboardView: View {
                     Button("退出登录并清除小米凭据", role: .destructive) {
                         model.disconnect(modelContext: modelContext)
                     }
-                    .disabled(model.isSyncing)
+                    .disabled(model.isSyncing || HealthSyncSafety.writesPaused)
                 }
             }
             .navigationTitle("HealthMi")
@@ -232,12 +244,15 @@ struct DashboardView: View {
             .task {
                 await model.refreshSummary()
                 // App Intent 触发时自动开始同步
-                if SyncIntentTrigger.shouldSync {
+                if !HealthSyncSafety.writesPaused, SyncIntentTrigger.shouldSync {
                     SyncIntentTrigger.shouldSync = false
                     await model.syncAll(modelContext: modelContext)
                 }
             }
-            .refreshable { await model.syncAll(modelContext: modelContext) }
+            .refreshable {
+                if HealthSyncSafety.writesPaused { await model.refreshSummary() }
+                else { await model.syncAll(modelContext: modelContext) }
+            }
             .sheet(isPresented: Binding(
                 get: { exportFileURL != nil },
                 set: { if !$0 { exportFileURL = nil } }

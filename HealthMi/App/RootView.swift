@@ -7,6 +7,9 @@ struct RootView: View {
         Group {
             if model.isConfigured {
                 DashboardView()
+            } else if HealthSyncSafety.writesPaused {
+                ContentUnavailableView("同步暂停", systemImage: "pause.circle",
+                                       description: Text("只读检查期间不会更改登录或健康数据。"))
             } else {
                 OnboardingView()
             }

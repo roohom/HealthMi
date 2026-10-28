@@ -1,3 +1,4 @@
+import CoreFoundation
 import XCTest
 @testable import HealthMi
 
@@ -5,6 +6,7 @@ import XCTest
 /// never instantiates a writer, logs credentials, or emits raw health records.
 @MainActor
 final class CloudContractTests: XCTestCase {
+    #if DEBUG
     func testReadOnlySleepContract() async throws {
         guard ProcessInfo.processInfo.environment["HEALTHMI_READONLY_CLOUD_CHECK"] == "1" else {
             throw XCTSkip("Use the HealthMiCloudCheck scheme for the opt-in cloud check.")
@@ -24,7 +26,11 @@ final class CloudContractTests: XCTestCase {
                                 timeZone: MiAPIClient.regionTimeZone)
         let items: [MiItem]
         do {
-            items = try await client.fetchData(key: "sleep", startTime: window.startTime, endTime: window.endTime)
+            let (wire, mapped) = try await client.readOnlySleepWireSnapshot(startTime: window.startTime,
+                                                                         endTime: window.endTime)
+            items = mapped
+            let raw = try XCTUnwrap(try JSONSerialization.jsonObject(with: wire) as? [[String: Any]])
+            Self.inspectWireCandidates(raw).forEach { print($0) }
         } catch {
             XCTFail("READONLY_CLOUD_FETCH_FAILED \(Self.safeError(error))")
             return
@@ -42,6 +48,140 @@ final class CloudContractTests: XCTestCase {
         Self.describeCandidateGroups(items)
         XCTAssertFalse(items.isEmpty, "No sleep records returned; the real sleep contract has not been verified.")
         XCTAssertNoThrow(try MiParser.sleepSessions(items), "Cloud sleep candidates require explicit contract handling.")
+    }
+    #endif
+
+    func testWireInspectionKeepsRawBooleanTypesAndRedactsIdentity() throws {
+        let start = 1_700_000_000
+        func row(_ end: Int, incomplete: Any, updated: Int) throws -> [String: Any] {
+            let payload: [String: Any] = ["bedtime": start, "wake_up_time": end,
+                                          "is_uncomplete": incomplete, "items": []]
+            return ["sid": "SYNTHETIC_PRIVATE_ID", "zone_name": "Asia/Shanghai", "zone_offset": 28800,
+                    "update_time": updated, "deleted": false,
+                    "value": String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)]
+        }
+        let report = Self.inspectWireCandidates(try [row(start + 60, incomplete: true, updated: 10),
+                                                     row(start + 120, incomplete: 0, updated: 20)])
+            .joined(separator: "\n")
+        XCTAssertTrue(report.contains("is_uncomplete=boolean:true"))
+        XCTAssertTrue(report.contains("is_uncomplete=number:false"))
+        XCTAssertTrue(report.contains("update_timeRelation=different"))
+        XCTAssertTrue(report.contains("deleted=boolean:false"))
+        XCTAssertFalse(report.contains("SYNTHETIC_PRIVATE_ID"))
+        XCTAssertFalse(report.contains(String(start)))
+    }
+
+    /// All raw values stay inside the phone test process; only this allowlisted summary is printed.
+    private static func inspectWireCandidates(_ rows: [[String: Any]]) -> [String] {
+        struct Candidate {
+            let outer: [String: Any]
+            let payload: [String: Any]
+            let start: Int
+            let end: Int
+        }
+        var groups: [String: [Candidate]] = [:]
+        for raw in rows {
+            let payload: [String: Any]?
+            if let text = raw["value"] as? String { payload = MiJSON.object(from: Data(text.utf8)) }
+            else { payload = raw["value"] as? [String: Any] }
+            guard let payload,
+                  let start = MiJSON.int(payload["bedtime"] ?? payload["device_bedtime"] ?? payload["bed_timestamp"]),
+                  let end = MiJSON.int(payload["wake_up_time"] ?? payload["device_wake_up_time"] ?? payload["out_bed_timestamp"]),
+                  end > start else { continue }
+            groups["\(MiJSON.string(raw["sid"]) ?? "unknown")_\(start)", default: []]
+                .append(Candidate(outer: raw, payload: payload, start: start, end: end))
+        }
+        // Sorting labels is for App comparison only; it never selects a winning candidate.
+        let ordered = groups.values.sorted { $0[0].start > $1[0].start }
+        var report: [String] = []
+        var conflictIndex = 0
+        for (position, group) in ordered.enumerated() where group.count > 1 {
+            conflictIndex += 1
+            let label = "G\(conflictIndex)"
+            let candidates = group.sorted { $0.end < $1.end }
+            let payloadKeys = Set(candidates.flatMap { $0.payload.keys })
+            let differences = payloadKeys.filter { key in Set(candidates.map { signature($0.payload[key]) }).count > 1 }.sorted()
+            let updates = candidates.compactMap { candidate -> Double? in
+                guard rawType(candidate.outer["update_time"]) == "number",
+                      let value = candidate.outer["update_time"] as? NSNumber,
+                      value.doubleValue.isFinite else { return nil }
+                return value.doubleValue
+            }
+            let orderedUpdates = Array(Set(updates)).sorted()
+            func relation(_ key: String) -> String {
+                let values = candidates.compactMap { $0.outer[key] }
+                if values.isEmpty { return "allMissing" }
+                if values.count != candidates.count { return "partlyMissing" }
+                return Set(values.map { signature($0) }).count == 1 ? "equal" : "different"
+            }
+            report.append("READONLY_WIRE_GROUP \(label) sessionOrderNewestFirst=\(position + 1) candidates=\(candidates.count) differingFields=\(differences) update_timeRelation=\(relation("update_time")) deletedRelation=\(relation("deleted"))")
+            for (index, candidate) in candidates.enumerated() {
+                let raw = candidate.outer
+                let p = candidate.payload
+                let startDate = Date(timeIntervalSince1970: Double(candidate.start))
+                let endDate = Date(timeIntervalSince1970: Double(candidate.end))
+                let namedZone = (raw["zone_name"] as? String).flatMap(TimeZone.init(identifier:))
+                let offset = (raw["zone_offset"] as? NSNumber)?.intValue
+                let offsetZone = offset.flatMap { abs($0) <= 14 * 3600 ? TimeZone(secondsFromGMT: $0) : nil }
+                let zone = namedZone ?? offsetZone
+                let agrees = namedZone == nil || offset == nil || namedZone!.secondsFromGMT(for: startDate) == offset!
+                var temporal = "unresolved"
+                var localBands = "unresolved"
+                if let zone, agrees {
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = zone
+                    let startHour = calendar.component(.hour, from: startDate)
+                    let endHour = calendar.component(.hour, from: endDate)
+                    let crosses = !calendar.isDate(startDate, inSameDayAs: endDate)
+                    func band(_ hour: Int) -> String {
+                        switch hour {
+                        case 0..<6: return "nightBeforeDawn"
+                        case 6..<12: return "morning"
+                        case 12..<18: return "afternoon"
+                        default: return "evening"
+                        }
+                    }
+                    localBands = "\(band(startHour))->\(band(endHour))/\(crosses ? "crossesLocalDay" : "sameLocalDay")"
+                    if crosses, startHour >= 18, endHour < 12 { temporal = "eveningToMorningAcrossLocalMidnight" }
+                    else if crosses { temporal = "crossesLocalMidnight" }
+                    else if startHour < 6 || endHour < 6 { temporal = "includesLocalNight" }
+                    else { temporal = "sameLocalDayNotClassifiedAsNap" }
+                }
+                let zoneSource = namedZone != nil ? "zone_name" : offsetZone != nil ? "zone_offset" : "missing"
+                let timezoneField = (p["timezone"] as? NSNumber)?.intValue
+                let payloadZoneRelation = offset.flatMap { seconds in timezoneField.map { $0 * 15 * 60 == seconds ? "matchesQuarterHourOffset" : "doesNotMatchQuarterHourOffset" } } ?? "notComparable"
+                let updateRank = updates.count == candidates.count ? String(orderedUpdates.firstIndex(of: updates[index])! + 1) : "notComparable"
+                report.append("READONLY_WIRE_CANDIDATE \(label).C\(index + 1) timezoneSource=\(zoneSource) outerTimezoneAgreement=\(agrees) payloadTimezoneRelation=\(payloadZoneRelation) temporalPattern=\(temporal) localBands=\(localBands) is_nap=\(booleanObservation(p["is_nap"])) is_uncomplete=\(booleanObservation(p["is_uncomplete"])) update_time=\(rawType(raw["update_time"])) updateNumericRank=\(updateRank) deleted=\(booleanObservation(raw["deleted"]))")
+            }
+        }
+        return report
+    }
+
+    private static func rawType(_ value: Any?) -> String {
+        guard let value else { return "missing" }
+        if value is NSNull { return "null" }
+        if let number = value as? NSNumber {
+            return CFGetTypeID(number) == CFBooleanGetTypeID() ? "boolean" : "number"
+        }
+        if value is String { return "string" }
+        if value is [Any] { return "array" }
+        if value is [String: Any] { return "object" }
+        return "unknown"
+    }
+
+    private static func booleanObservation(_ value: Any?) -> String {
+        let type = rawType(value)
+        guard let value else { return type }
+        let bool: Bool?
+        if let number = value as? NSNumber, number == 0 || number == 1 { bool = number.boolValue }
+        else if let string = value as? String {
+            switch string.lowercased() {
+            case "true", "1": bool = true
+            case "false", "0": bool = false
+            default: bool = nil
+            }
+        } else { bool = nil }
+        return type + ":" + (bool.map { String($0) } ?? "unresolved")
     }
 
     /// Compare candidates on-device; emit field names and equality relations, never values or identities.

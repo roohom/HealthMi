@@ -55,7 +55,7 @@ final class AppModel {
     // MARK: - 初始化 / 凭据
 
     func bootstrap() {
-        CredentialStore.migrateIfNeeded()
+        if !HealthSyncSafety.writesPaused { CredentialStore.migrateIfNeeded() }
         loadEnabledTypes()
         if let cred = CredentialStore.load() {
             isConfigured = true
