@@ -2,8 +2,7 @@ import CoreFoundation
 import XCTest
 @testable import HealthMi
 
-/// Explicit opt-in, physical-device diagnostic. Reads Xiaomi sleep data only;
-/// never instantiates a writer, logs credentials, or emits raw health records.
+/// Explicit, read-only cloud diagnostics. Never creates a HealthKit writer or emits raw records.
 @MainActor
 final class CloudContractTests: XCTestCase {
     #if DEBUG
@@ -19,7 +18,7 @@ final class CloudContractTests: XCTestCase {
         do {
             try await client.connect(userId: credential.userId, passToken: credential.passToken)
         } catch {
-            XCTFail("READONLY_CLOUD_AUTH_FAILED \(Self.safeError(error))")
+            XCTFail("READONLY_CLOUD_AUTH_FAILED \(DeviceCheckDiagnostics.safeError(error))")
             return
         }
         let window = SyncWindow(now: Date(), highWater: nil, days: 7, forceBackfill: false,
@@ -32,7 +31,7 @@ final class CloudContractTests: XCTestCase {
             let raw = try XCTUnwrap(try JSONSerialization.jsonObject(with: wire) as? [[String: Any]])
             Self.inspectWireCandidates(raw).forEach { print($0) }
         } catch {
-            XCTFail("READONLY_CLOUD_FETCH_FAILED \(Self.safeError(error))")
+            XCTFail("READONLY_CLOUD_FETCH_FAILED \(DeviceCheckDiagnostics.safeError(error))")
             return
         }
         var fields = Set<String>()
@@ -48,6 +47,11 @@ final class CloudContractTests: XCTestCase {
         Self.describeCandidateGroups(items)
         XCTAssertFalse(items.isEmpty, "No sleep records returned; the real sleep contract has not been verified.")
         XCTAssertNoThrow(try MiParser.sleepSessions(items), "Cloud sleep candidates require explicit contract handling.")
+        if let sessions = try? MiParser.sleepSessions(items) {
+            let latest = sessions.max { $0.startAt < $1.startAt }
+            let samples = latest.map(TypeMapper.sleepSamples) ?? []
+            print("READONLY_SLEEP_RESOLUTION sessions=\(sessions.count) latestSessionStageSegments=\(latest?.segments.count ?? 0) latestSessionHealthSamples=\(samples.count) latestSessionLegacyIDs=\(latest?.legacySleepIDs.count ?? 0)")
+        }
     }
     #endif
 
@@ -221,9 +225,12 @@ final class CloudContractTests: XCTestCase {
         return (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]))
             ?? Data("unencodable".utf8)
     }
+}
 
+/// Shared error redaction for device checks; no server messages or credential-bearing URLs.
+enum DeviceCheckDiagnostics {
     /// XCTest must not dump server messages or URLSession redirect URLs containing login material.
-    private static func safeError(_ error: Error) -> String {
+    static func safeError(_ error: Error) -> String {
         if let login = error as? MiLoginError {
             switch login {
             case .loginRejected(let code, _): return "loginRejected code=\(code ?? -1)"

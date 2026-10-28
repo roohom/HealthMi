@@ -21,7 +21,9 @@
 
 非官方接口没有经过核验的修订字段，因此本版不把 `time` 当作版本号，也不认为更长的睡眠必然更新。
 
-完全相同的候选记录会归并；同一 `sid + bedtime` 下若存在不同起止时间、分期或睡眠衍生指标，则本类别同步报冲突，保留已经写入的数据。缺失/重叠/越界分期和未知阶段也会停止睡眠写入，避免静默记成浅睡或删除旧分期。HRV 和呼吸频率可使用无分期的完整汇总记录，但同组冲突仍会报错。
+完全相同的候选记录会归并。依据 3.59.1 客户端取证，同一 `sid + bedtime` 下有内容冲突时，仅在来源与时区一致、完成标记均为明确 JSON 布尔、完整候选内容唯一且覆盖全部未完成候选时，整条采用完整候选；否则仍报冲突并保留已写入的数据。不按返回顺序、时长或 `update_time` 排序选取。详细证据与边界见 [sleep-cloud-contract.md](sleep-cloud-contract.md)。
+
+缺失/重叠/越界分期和未知阶段也会停止睡眠写入，避免静默记成浅睡或删除旧分期。HRV 和呼吸频率共用候选选择，但可使用没有分期的汇总记录。明确的云端删除行不生成样本或 HealthKit 删除计划。
 
 `sid + bedtime` 是当前可解释的候选身份，并非已证明永不变化的云端会话主键。若源端修正了 bedtime，自动识别它与另一条记录属于同一次睡眠仍需真实、脱敏的接口证据；本版不通过时间接近或“同一晚”猜测合并，也不会把独立午睡合并。
 
@@ -66,6 +68,8 @@ xcodebuild -project HealthMi.xcodeproj -scheme HealthMi \
 
 冲突诊断仅在手机内比较候选，输出分组条数、差异字段名以及 `version` 和结束时间是否相等，不输出字段值或会话身份。网络和认证失败只输出错误类别及代码，避免 XCTest 展开服务器消息或携带登录信息的重定向 URL。发现 `version`、`is_uncomplete` 等字段不代表已证明其修订语义；无法确定取舍时，契约测试保持失败，继续阻止写入。
 
+另外，`DeviceAcceptanceTests.testApprovedLatestNightWriteAndIdempotency` 是需要用户单独明确授权的单晚实写验收，默认跳过，任何仓库 scheme 均未启用。它只接受本地临时测试配置中的 `HEALTHMI_LAST_SLEEP_WRITE_CHECK=1`，同时要求持久化暂停仍开启、批准的会话结构不变、无待恢复睡眠任务、旧数据归属与范围明确；底层围栏只放行该批样本及预检匹配 UUID。它不会恢复 App 或后台同步。验收结束应移除临时写入开关；不能把该测试与默认只读诊断混称。当前验收结果见 [睡眠云端契约](sleep-cloud-contract.md)。
+
 Debug 构建提供受只读开关保护的 `readOnlySleepWireSnapshot`，在转换为 `MiItem` 前于手机内存中检查外层元数据，原始快照不落盘、不输出。逐组诊断只输出记录自身时区的粗粒度时段、`is_uncomplete`/`is_nap` 的存在状态与 JSON 类型及布尔值，以及 `update_time` 数值相对顺序和 `deleted` 的存在状态。候选编号和排序仅用于对照，不表示取舍优先级。合成测试检查布尔与数值类型不会混淆，且输出不包含记录身份或时间戳。
 
 ## 真机签名
@@ -78,3 +82,7 @@ HEALTHMI_DEVELOPMENT_TEAM = 你的开发团队ID
 ```
 
 用 Xcode 打开项目，选择已连接、已解锁的 iPhone 后按 Cmd+R。覆盖原 App，保留登录和同步进度。续签仍受免费 Personal Team 的期限限制。本机签名文件受 `.gitignore` 保护，重新运行 XcodeGen 也会保留它。
+
+恢复日常同步前可在只读 scheme 运行 `DeviceAcceptanceTests.testReadOnlyResumeReadiness`，检查未完成计划、账户归属和已有游标。用户明确授权恢复后，`DeviceAcceptanceTests.testApprovedNormalSyncRestored` 需要本地临时 `HEALTHMI_VERIFY_NORMAL_SYNC=1`（不加入仓库 scheme），验证暂停已解除并调用原有正常增量路径；本次还限定所有启用类别已有进度且窗口不超过 3 个日历日。测试后移除临时恢复/验证开关，普通启动 App。2026-10-28 已实机完成该流程，9 类正常增量同步成功，后台请求已登记。
+
+测试组织：`CloudContractTests` 仅做只读云端检查；`DeviceAcceptanceTests` 集中恢复预检、内存围栏回归及两个默认跳过的实写入口。普通 `HealthMi` scheme 不启用这些诊断开关，可运行纯回归测试并保持手机当前同步模式。

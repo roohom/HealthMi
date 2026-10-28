@@ -18,7 +18,7 @@ let package = Package(
         ]),
         .testTarget(name: "HealthMiCoreTests", dependencies: ["HealthMiCore"], path: "HealthMiTests", exclude: [
             "MiCryptoTests.swift", "MiWebLoginTests.swift", "SyncEngineTests.swift",
-            "TypeMapperTests.swift", "CloudContractTests.swift",
+            "TypeMapperTests.swift", "CloudContractTests.swift", "DeviceAcceptanceTests.swift",
         ], sources: [
             "SyncReliabilityTests.swift", "MiParserTests.swift", "SyncStateStoreTests.swift",
         ]),

@@ -6,12 +6,20 @@ final class SyncEngineTests: XCTestCase {
 
     func testFirstSyncWindow() async {
         // 首次同步：无游标，按 backfillDays 回填
-        let now = Date()
+        let before = Date()
         let result = await engine.syncWindow(highWater: nil, backfillDays: 30, forceBackfill: false)
-        // start 应该大约 30 天前
-        let daysDiff = Calendar.current.dateComponents([.day], from: result.start, to: now).day ?? 0
-        XCTAssertEqual(daysDiff, 30, accuracy: 1)
-        XCTAssertEqual(result.end.timeIntervalSince(now), 0, accuracy: 60)
+        let after = Date()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = MiAPIClient.regionTimeZone
+        let today = calendar.startOfDay(for: result.end)
+        let expectedStart = calendar.date(byAdding: .day, value: -29, to: today)!
+        let nextMidnight = calendar.date(byAdding: .day, value: 1, to: today)!
+        // end is the synchronization cutoff; endTime is the inclusive cloud query boundary.
+        XCTAssertGreaterThanOrEqual(result.end, before)
+        XCTAssertLessThanOrEqual(result.end, after)
+        XCTAssertEqual(result.start, expectedStart)
+        XCTAssertEqual(result.startTime, Int(expectedStart.timeIntervalSince1970))
+        XCTAssertEqual(result.endTime + 1, Int(nextMidnight.timeIntervalSince1970))
     }
 
     func testIncrementalSyncWindow() async {

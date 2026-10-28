@@ -10,6 +10,7 @@
 		00B6417CEF09B90A63A9E08C /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE42963B0DA22F1D3A79BD4 /* SyncEngine.swift */; };
 		0A354162109CDE65AA26CC7C /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84D3AB8A04983B253EB8C2D /* SyncEngineTests.swift */; };
 		0CB996F4D914927353FCC7AD /* HealthKitSyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB39744033DFBF9C7D5579B /* HealthKitSyncStore.swift */; };
+		1B48BEAFBDF4E04B67017166 /* DeviceAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A3BDA92E2CCB05E4F0ABA32 /* DeviceAcceptanceTests.swift */; };
 		1E1BBEC48FFED51E03E7AC6B /* MiParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03EB6FDE05824AFA45771995 /* MiParserTests.swift */; };
 		1E1E5E15FA5203957AC942D5 /* SyncWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB45C11B7CB32265D7F8DD51 /* SyncWindow.swift */; };
 		275026CA85AC231464B4C0A7 /* StressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E5A617ADC0F1D321F07B42 /* StressStore.swift */; };
@@ -68,6 +69,7 @@
 		028389EDD4D2D68BA73947B0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		03EB6FDE05824AFA45771995 /* MiParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiParserTests.swift; sourceTree = "<group>"; };
 		0927148C8AAC8934B54AAD00 /* CloudContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudContractTests.swift; sourceTree = "<group>"; };
+		0A3BDA92E2CCB05E4F0ABA32 /* DeviceAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceAcceptanceTests.swift; sourceTree = "<group>"; };
 		18B42438CD50B3EF106D0F3E /* SyncLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncLogEntry.swift; sourceTree = "<group>"; };
 		1C072B77F1762B2CA8F106DA /* SyncReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncReliabilityTests.swift; sourceTree = "<group>"; };
 		22B7D4B02356356C8416119B /* MiSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiSession.swift; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				0927148C8AAC8934B54AAD00 /* CloudContractTests.swift */,
+				0A3BDA92E2CCB05E4F0ABA32 /* DeviceAcceptanceTests.swift */,
 				47011AAE9C00D0D5D82B9E7E /* MiCryptoTests.swift */,
 				03EB6FDE05824AFA45771995 /* MiParserTests.swift */,
 				76B2D77AD6CC548500DB6E71 /* MiWebLoginTests.swift */,
@@ -364,6 +367,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3A81E0CB347E67854048226A /* CloudContractTests.swift in Sources */,
+				1B48BEAFBDF4E04B67017166 /* DeviceAcceptanceTests.swift in Sources */,
 				AE9B8F3C1046BEF1A1E73170 /* MiCryptoTests.swift in Sources */,
 				1E1BBEC48FFED51E03E7AC6B /* MiParserTests.swift in Sources */,
 				A47F941A95E58E7D1C0E64A2 /* MiWebLoginTests.swift in Sources */,
