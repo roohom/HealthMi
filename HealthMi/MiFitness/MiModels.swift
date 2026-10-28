@@ -1,9 +1,13 @@
+import CoreFoundation
 import Foundation
 
 // MARK: - 解析中间类型（actor 边界内安全传递）
 
-/// 小米云端返回的原始条目（已抽取出通用字段，`value` 保留为 JSON 数据）。
-/// 对应 Python 端 item：`{time, zone_offset, zone_name, sid, key, category, value}`。
+enum MiDeletionState: Sendable, Hashable {
+    case active, deleted, invalid
+}
+
+/// 小米云端条目；保留 value 及睡眠解析需要的外层删除状态。
 struct MiItem: Sendable, Hashable {
     var time: Int?
     var zoneOffset: Int?
@@ -13,6 +17,7 @@ struct MiItem: Sendable, Hashable {
     var category: String?
     /// `value` 字段的 JSON 数据（字典已序列化，字符串按原样编码）。
     var valueData: Data?
+    var deletionState: MiDeletionState = .active
 }
 
 /// 一页数据 + 分页游标。
@@ -147,6 +152,19 @@ struct MiWorkout: Sendable, Identifiable, Hashable {
 // MARK: - JSON 安全取值工具（对应 Python 端宽容解析）
 
 enum MiJSON {
+    /// Wire status flags must be JSON booleans; coercion could turn unknown data into authority.
+    static func jsonBool(_ value: Any?) -> Bool? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+        return number.boolValue
+    }
+
+    static func deletionState(_ value: Any?) -> MiDeletionState {
+        guard let value, !(value is NSNull) else { return .active }
+        guard let deleted = jsonBool(value) else { return .invalid }
+        return deleted ? .deleted : .active
+    }
+
     static func object(from data: Data) -> [String: Any]? {
         (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }

@@ -240,6 +240,117 @@ final class SyncReliabilityTests: XCTestCase {
         XCTAssertThrowsError(try MiParser.sleepSessions([a, item(240, stamp: bedtime + 300)]))
     }
 
+    private func sleepCandidate(start: Int, minutes: Int, incomplete: Any? = nil,
+                                stage: Int = 2, hrv: Int = 40, sid: String? = "device") throws -> MiItem {
+        let end = start + minutes * 60
+        var payload: [String: Any] = ["bedtime": start, "wake_up_time": end, "version": 4,
+                                     "avg_hrv": hrv, "avg_breath": 16,
+                                     "items": [["start_time": start, "end_time": end, "state": stage]]]
+        if let incomplete { payload["is_uncomplete"] = incomplete }
+        return MiItem(time: end, zoneOffset: 28800, zoneName: "Asia/Shanghai", sid: sid, key: "sleep",
+                      category: nil, valueData: try JSONSerialization.data(withJSONObject: payload))
+    }
+
+    func testVerifiedSleepCompletionResolvesEightRowsWithoutDroppingIndependentNap() throws {
+        let start = Int(now.timeIntervalSince1970) - 5 * 86400
+        let partial = try sleepCandidate(start: start, minutes: 240, incomplete: true)
+        let later = try sleepCandidate(start: start, minutes: 360, incomplete: true)
+        let complete = try sleepCandidate(start: start, minutes: 480, incomplete: false, stage: 3, hrv: 60)
+        let otherPartial = try sleepCandidate(start: start + 86400, minutes: 300, incomplete: true)
+        let otherComplete = try sleepCandidate(start: start + 86400, minutes: 420, incomplete: false)
+        let night3 = try sleepCandidate(start: start + 2 * 86400, minutes: 450, incomplete: false)
+        let night4 = try sleepCandidate(start: start + 3 * 86400, minutes: 470, incomplete: false)
+        // Completion state is not a nap classifier: keep this independent, staged sleep.
+        let nap = try sleepCandidate(start: start + 12 * 3600, minutes: 30, incomplete: true)
+        let rows = [partial, later, complete, otherPartial, otherComplete, night3, night4, nap]
+        let expected = try MiParser.sleepSessions([complete, otherComplete, night3, night4, nap])
+        let sessions = try MiParser.sleepSessions(rows)
+        XCTAssertEqual(sessions.map(\.sleepId), expected.map(\.sleepId))
+        XCTAssertEqual(sessions.map(\.endAt), expected.map(\.endAt))
+        XCTAssertEqual(sessions.map(\.segments), expected.map(\.segments))
+        XCTAssertEqual(try MiParser.sleepSessions(Array(rows.reversed())), sessions)
+        let selected = try XCTUnwrap(expected.first { $0.sleepId == "device_\(start)" })
+        XCTAssertEqual(selected.segments.first?.stage, .light)
+        let resolved = try XCTUnwrap(MiParser.sleepSessions(rows).first { $0.sleepId == selected.sleepId })
+        XCTAssertEqual(resolved.legacySleepIDs.count, 3)
+        XCTAssertEqual(try MiParser.hrvSamples(rows).first { $0.sleepId == selected.sleepId }?.sdnnMs, 60)
+        XCTAssertEqual(try MiParser.respiratoryRateSamples(rows).count, 5)
+    }
+
+    func testRepeatedCompleteCandidateCanResolveAcrossPageOrder() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let partial = try sleepCandidate(start: start, minutes: 240, incomplete: true)
+        let complete = try sleepCandidate(start: start, minutes: 480, incomplete: false)
+        XCTAssertEqual(try MiParser.sleepSessions([complete, partial, complete]),
+                       try MiParser.sleepSessions([partial, complete]))
+    }
+
+    func testUncertainCompletionFlagsCannotResolveDifferentSleepContent() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let complete = try sleepCandidate(start: start, minutes: 480, incomplete: false)
+        let unknowns: [Any?] = [nil, NSNull(), "true", "false", 0, 1, "unknown"]
+        for unknown in unknowns {
+            let other = try sleepCandidate(start: start, minutes: 240, incomplete: unknown)
+            XCTAssertThrowsError(try MiParser.sleepSessions([other, complete]))
+        }
+        let unfinished = try sleepCandidate(start: start, minutes: 240, incomplete: true)
+        let laterUnfinished = try sleepCandidate(start: start, minutes: 360, incomplete: true)
+        XCTAssertThrowsError(try MiParser.sleepSessions([unfinished, laterUnfinished]))
+    }
+
+    func testDivergentCompleteCandidatesRemainConflicting() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let a = try sleepCandidate(start: start, minutes: 420, incomplete: false)
+        let b = try sleepCandidate(start: start, minutes: 480, incomplete: false)
+        XCTAssertThrowsError(try MiParser.sleepSessions([a, b]))
+        XCTAssertThrowsError(try MiParser.sleepSessions([b, a]))
+    }
+
+    func testCompleteCandidateMustContainTheUnfinishedCandidate() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let longerUnfinished = try sleepCandidate(start: start, minutes: 480, incomplete: true)
+        let shorterComplete = try sleepCandidate(start: start, minutes: 420, incomplete: false)
+        XCTAssertThrowsError(try MiParser.sleepSessions([longerUnfinished, shorterComplete]))
+    }
+
+    func testCompletionDoesNotInventOrBlurSleepIdentity() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let a = try sleepCandidate(start: start, minutes: 420, incomplete: false)
+        let nearby = try sleepCandidate(start: start + 60, minutes: 20, incomplete: true)
+        let anotherSource = try sleepCandidate(start: start, minutes: 420, incomplete: false, sid: "other-device")
+        XCTAssertEqual(try MiParser.sleepSessions([a, nearby, anotherSource]).count, 3)
+        let missingSource = try sleepCandidate(start: start, minutes: 240, incomplete: true, sid: nil)
+        let missingSourceComplete = try sleepCandidate(start: start, minutes: 480, incomplete: false, sid: nil)
+        XCTAssertThrowsError(try MiParser.sleepSessions([missingSource, missingSourceComplete]))
+        var differentCategory = try sleepCandidate(start: start, minutes: 240, incomplete: true)
+        differentCategory.category = "other"
+        XCTAssertThrowsError(try MiParser.sleepSessions([differentCategory, a]))
+    }
+
+    func testSleepDeletionMarkersNeverBecomeImportedSleepSamples() throws {
+        let start = Int(now.timeIntervalSince1970) - 86400
+        let active = try sleepCandidate(start: start, minutes: 420, incomplete: false)
+        let tombstone = MiItem(time: start, sid: "device", key: "sleep", deletionState: .deleted)
+        XCTAssertEqual(try MiParser.sleepSessions([tombstone, active]), try MiParser.sleepSessions([active]))
+        XCTAssertTrue(try MiParser.sleepSessions([tombstone]).isEmpty)
+        var invalid = active
+        invalid.deletionState = .invalid
+        XCTAssertThrowsError(try MiParser.sleepSessions([invalid]))
+    }
+
+    func testSleepWireStatusFlagsRequireActualJSONBooleans() throws {
+        let data = Data("{\"t\":true,\"f\":false,\"one\":1,\"zero\":0,\"text\":\"false\",\"null\":null}".utf8)
+        let payload = try XCTUnwrap(MiJSON.object(from: data))
+        XCTAssertEqual(MiJSON.jsonBool(payload["t"]), true)
+        XCTAssertEqual(MiJSON.jsonBool(payload["f"]), false)
+        for key in ["one", "zero", "text", "null", "missing"] { XCTAssertNil(MiJSON.jsonBool(payload[key])) }
+        XCTAssertEqual(MiJSON.deletionState(nil), .active)
+        XCTAssertEqual(MiJSON.deletionState(payload["null"]), .active)
+        XCTAssertEqual(MiJSON.deletionState(payload["f"]), .active)
+        XCTAssertEqual(MiJSON.deletionState(payload["t"]), .deleted)
+        XCTAssertEqual(MiJSON.deletionState(payload["text"]), .invalid)
+    }
+
     func testStressBackfillPreservesOutOfRangeAndUpdatesCursor() throws {
         let schema = Schema([StressRecord.self, SyncState.self])
         let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])

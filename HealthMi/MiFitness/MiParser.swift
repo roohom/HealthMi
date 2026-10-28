@@ -9,7 +9,7 @@ enum MiParser {
             switch self {
             case .invalidRecord: return "睡眠记录格式或分段时间无效，已停止本类同步。"
             case .conflictingVersions:
-                return "同次睡眠存在不同内容，但云端未提供可确认的修订顺序；已保留现有健康数据。"
+                return "同组睡眠候选存在不同内容，无法确认唯一有效记录；已保留现有健康数据。"
             case .unknownStage: return "发现未知睡眠阶段，已停止写入，避免误记成浅睡。"
             case .incompleteStages: return "云端睡眠缺少完整分期，已保留现有睡眠数据，请稍后重试。"
             }
@@ -25,8 +25,12 @@ enum MiParser {
     /// `time` is a source timestamp, not a documented revision number. Never use it to
     /// guess which conflicting snapshot wins, nor assume that longer sleep is newer.
     private static func canonicalSleepRecords(_ items: [MiItem]) throws -> [SleepRecord] {
-        var records: [String: SleepRecord] = [:]
+        var groups: [String: [SleepRecord]] = [:]
         for item in items {
+            // Xiaomi 3.59.1 treats missing/null deleted as active. A tombstone is not a
+            // HealthKit deletion instruction; it simply cannot supply importable samples.
+            if item.deletionState == .deleted { continue }
+            guard item.deletionState != .invalid else { throw SleepError.invalidRecord }
             let payload = valueObject(item)
             guard let start = firstInt(payload, "bedtime", "device_bedtime", "bed_timestamp"),
                   let end = firstInt(payload, "wake_up_time", "device_wake_up_time", "out_bed_timestamp") ?? item.time,
@@ -55,15 +59,47 @@ enum MiParser {
                 if let value = MiJSON.int(payload[field]) { semantic[field] = value }
             }
             let content = try JSONSerialization.data(withJSONObject: semantic, options: .sortedKeys)
-            if var existing = records[key] {
-                guard existing.content == content else { throw SleepError.conflictingVersions }
-                existing.aliases = Array(Set(existing.aliases + [alias])).sorted()
-                records[key] = existing
-            } else {
-                records[key] = SleepRecord(item: item, aliases: [alias], content: content)
-            }
+            groups[key, default: []].append(SleepRecord(item: item, aliases: [alias], content: content))
         }
-        return records.sorted { $0.key < $1.key }.map(\.value)
+        return try groups.sorted { $0.key < $1.key }.map { _, candidates in
+            var selected = candidates[0]
+            if candidates.contains(where: { $0.content != selected.content }) {
+                selected = try completedSleepCandidate(candidates)
+            }
+            selected.aliases = Array(Set(candidates.flatMap(\.aliases))).sorted()
+            return selected
+        }
+    }
+
+    /// Verified against com.mi.health 3.59.1: is_uncomplete is the inverse of
+    /// isCompleteSleep; a new containing sleep can supersede an unfinished segment.
+    /// This is deliberately narrower than Xiaomi's containment cleanup: exact source
+    /// and bedtime, one complete content, no fuzzy grouping or clock-based ranking.
+    private static func completedSleepCandidate(_ candidates: [SleepRecord]) throws -> SleepRecord {
+        guard let sid = candidates[0].item.sid, !sid.isEmpty else { throw SleepError.conflictingVersions }
+        let category = candidates[0].item.category
+        let offset = candidates[0].item.zoneOffset
+        let zone = candidates[0].item.zoneName
+        var completed: [SleepRecord] = []
+        for candidate in candidates {
+            let item = candidate.item
+            let payload = valueObject(item)
+            guard item.key == "sleep", item.sid == sid, item.category == category,
+                  item.zoneOffset == offset, item.zoneName == zone,
+                  MiJSON.int(payload["bedtime"]) != nil,
+                  let incomplete = MiJSON.jsonBool(payload["is_uncomplete"]) else {
+                throw SleepError.conflictingVersions
+            }
+            if !incomplete { completed.append(candidate) }
+        }
+        guard let winner = completed.first,
+              completed.allSatisfy({ $0.content == winner.content }),
+              let end = firstInt(valueObject(winner.item), "wake_up_time", "device_wake_up_time", "out_bed_timestamp"),
+              candidates.allSatisfy({ candidate in
+                  guard let candidateEnd = firstInt(valueObject(candidate.item), "wake_up_time", "device_wake_up_time", "out_bed_timestamp") else { return false }
+                  return candidateEnd <= end
+              }) else { throw SleepError.conflictingVersions }
+        return winner
     }
     // MARK: - 日常活动（steps + calories 两个 key）
 

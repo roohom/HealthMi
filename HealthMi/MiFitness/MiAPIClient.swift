@@ -317,7 +317,8 @@ actor MiAPIClient {
             sid: MiJSON.string(raw["sid"]),
             key: MiJSON.string(raw["key"]),
             category: MiJSON.string(raw["category"]),
-            valueData: valueData
+            valueData: valueData,
+            deletionState: MiJSON.deletionState(raw["deleted"])
         )
     }
 }
